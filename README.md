@@ -5,14 +5,15 @@ The `Enterprise Scale AI Factory` is a plug and play solution that automates the
 It is based on the earlier `Enterpries Scale ML (ESML) AI Factory` open source project: https://github.com/jostrm/azure-enterprise-scale-ml
 
 ## Main purpose: 
-- 1) `Marry mutliple best practices & accelerators:` It reuses multiple existing Microsoft accelerators/landingzone architecture and best practices such as CAF & WAF, and provides an end-2-end experience including Dev,Test, Prod environments.
-- 2) `Template way of working & Project way of working:` The AI Factory ir `project based` and provides `multiple templates` besides the infrastructure template: `DataLake template, DataOps templates, MLOps templates`, with selectable project types.
-- 3) `Enterprise scale & security & battle tested`: Used by customers and partners with MLOps since 2019 (see LINKS) to accelerate the development and delivery of AI solutions, with common tooling & marrying multiple best practices.
+1) `Marry mutliple best practices & accelerators:` It reuses multiple existing Microsoft accelerators/landingzone architecture and best practices such as CAF & WAF, and provides an end-2-end experience including Dev,Test, Prod environments.
+2) `Template way of working & Project way of working:` The AI Factory ir `project based` and provides `multiple templates` besides the infrastructure template: `DataLake template, DataOps templates, MLOps templates`, with selectable project types.
+    - Sub-purpose: `Same MLOps` - weather data scientists chooses to work from Azure Databricks or Azure Machine Learning` - same MLOps template is used.
+3) `Enterprise scale & security & battle tested`: Used by customers and partners with MLOps since 2019 (see LINKS) to accelerate the development and delivery of AI solutions, with common tooling & marrying multiple best practices.
 
 ## News 2024
-- 1) GenAI: 2023 AI Factory: Support Generative AI, as “project type”. The current work in progress is to complete the Enterprise Scale GenAI project type, in the AI Factory.
-- 2) AVM: AI Factory BICEP as Azure Verified Modules, coming soon.
-- 3) LLMOps template integration, coming sooon
+1) `GenAI: 2023 AI Factory`: Support Generative AI, as “project type”. The current work in progress is to complete the Enterprise Scale GenAI project type, in the AI Factory.
+2) `AVM: AI Factory`: Transform BICEP as Azure Verified Modules, coming soon.
+3) `LLMOps template` integration, coming sooon.
 
 ## Public links/blogs for more info
 -	`AI factory with business value in 60h:` Microsoft Customer Story - 
