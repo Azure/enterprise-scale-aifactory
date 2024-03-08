@@ -5,13 +5,14 @@ The `Enterprise Scale AI Factory` is a plug and play solution that automates the
 It is based on the earlier `Enterpries Scale ML (ESML) AI Factory` open source project: https://github.com/jostrm/azure-enterprise-scale-ml
 
 ## Main purpose: 
-- It reuses multiple existing Microsoft accelerators/landingzone architecture and best practices such as CAF & WAF, and provides an end-2-end experience including Dev,Test, Prod environments.
-- The AI Factory ir `project based`, and provides `multiple templates` besides the infrastructure template, also a `DataLake template, DataOps templates, MLOps templates`, with selectable project types.
-- Battle tested, it has been used by customers and partners since 2019 (see LINKS) to accelerate the development and delivery of AI solutions, with common tooling & marrying multiple best practices.
+- 1) `Marry mutliple best practices & accelerators:` It reuses multiple existing Microsoft accelerators/landingzone architecture and best practices such as CAF & WAF, and provides an end-2-end experience including Dev,Test, Prod environments.
+- 2) `Template way of working & Project way of working:` The AI Factory ir `project based` and provides `multiple templates` besides the infrastructure template: `DataLake template, DataOps templates, MLOps templates`, with selectable project types.
+- 3) `Enterprise scale & security & battle tested`: Used by customers and partners with MLOps since 2019 (see LINKS) to accelerate the development and delivery of AI solutions, with common tooling & marrying multiple best practices.
 
-## News!
-- Now an AI Factory upate is needed to support Generative AI, as “project type”.
-- The current work in progress is to complete the Enterprise Scale GenAI project type, in the AI Factory, and port it to Azure Verified Modules, and continue with the LLMOps template integration.
+## News 2024
+- 1) GenAI: 2023 AI Factory: Support Generative AI, as “project type”. The current work in progress is to complete the Enterprise Scale GenAI project type, in the AI Factory.
+- 2) AVM: AI Factory BICEP as Azure Verified Modules, coming soon.
+- 3) LLMOps template integration, coming sooon
 
 ## Public links/blogs for more info
 -	`AI factory with business value in 60h:` Microsoft Customer Story - 
@@ -23,7 +24,6 @@ It is based on the earlier `Enterpries Scale ML (ESML) AI Factory` open source p
 -	`Microsoft AI Factory` documentation (CAF/MLOps): Machine learning operations - Cloud Adoption Framework | Microsoft Learn
     - https://learn.microsoft.com/en-us/azure/cloud-adoption-framework/ready/azure-best-practices/ai-machine-learning-mlops#ai-factory-for-organization-machine-learning-operations
     
-
 ## Contributing
 
 This project welcomes contributions and suggestions.  Most contributions require you to agree to a
