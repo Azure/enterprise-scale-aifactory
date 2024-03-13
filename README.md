@@ -1,15 +1,17 @@
 # Project
 
 The `Enterprise Scale AI Factory` is a plug and play solution that automates the provisioning, deployment, and management of AI projects on Azure with a template way of working.
+- Plug and play accelerator for: DataOps, MLOps, LLMOps, enteprise scale.
 
 It is based on the earlier `Enterpries Scale ML (ESML) AI Factory` open source project: https://github.com/jostrm/azure-enterprise-scale-ml
 
 ## Main purpose: 
 1) `Marry mutliple best practices & accelerators:` It reuses multiple existing Microsoft accelerators/landingzone architecture and best practices such as CAF & WAF, and provides an end-2-end experience including Dev,Test, Prod environments.
-2) `Template way of working & Project way of working:` The AI Factory ir `project based` and provides `multiple templates` besides the infrastructure template: `DataLake template, DataOps templates, MLOps templates`, with selectable project types.
+2) `Plug-and-play`: Dynamicallly create infra-resources per team, including networking dynamically, and RBAC dynamically (Example: subnet/IP calculator, ACL permission on the datalake for a project team, services glued together)
+3) `Template way of working & Project way of working:` The AI Factory ir `project based` and provides `multiple templates` besides the infrastructure template: `DataLake template, DataOps templates, MLOps templates`, with selectable project types.
     - Sub-purpose: `Same MLOps` - weather data scientists chooses to work from Azure Databricks or Azure Machine Learning` - same MLOps template is used.
     - Sub-purpose: `Common way of working, common toolbox, a flexible one`: A toolbox with a LAMBDA architecture with tools such as: Azure Datafactory, Azure Databricks, Azure Machine Learning, Eventhubs, AKS
-3) `Enterprise scale & security & battle tested`: Used by customers and partners with MLOps since 2019 (see LINKS) to accelerate the development and delivery of AI solutions, with common tooling & marrying multiple best practices. Private networking (private endpoints), as default.
+4) `Enterprise scale & security & battle tested`: Used by customers and partners with MLOps since 2019 (see LINKS) to accelerate the development and delivery of AI solutions, with common tooling & marrying multiple best practices. Private networking (private endpoints), as default.
 
 ### AI Factory - Conceptual sketch
 ![AI Factory](./docs/images/001_aifactory.png)
@@ -21,7 +23,7 @@ It is based on the earlier `Enterpries Scale ML (ESML) AI Factory` open source p
 ![AI Factory](./docs/images/004_AI_landscape_ESGenAI_project.png)
 
 ## News 2024
-1) `GenAI: 2023 AI Factory`: Support Generative AI, as “project type”. The current work in progress is to complete the Enterprise Scale GenAI project type, in the AI Factory.
+1) `GenAI: 2023 AI Factory`: Support Generative AI, as “project type”. Integrate AI landingzone accelerator as `AI Factory plug-and-play- see Main purpose 2)`. WIP is to complete the Enterprise Scale GenAI project type, in the AI Factory.
 2) `AVM: AI Factory`: Transform BICEP as Azure Verified Modules, coming soon.
 3) `LLMOps template` integration, coming sooon.
 
