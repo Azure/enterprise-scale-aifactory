@@ -121,7 +121,7 @@ All use cases are supported. But use cases that falls into category C, are not A
 <div class="warning" style='background-color:#78c7fe; color: #003279; border-left: solid #010da2 4px; border-radius: 4px; padding:0.7em;'>
 <span>
 <p style='margin-top:1em; text-align:left'>
-<b>Note: Since many have asked for requirements on PRIVATE ENDPOINTS (No public IP policy), also AzureML SDK v1 is supported (and highly prioritized to accelerate)</b>
+<b>Note:This solution has enterprise grade as goal, PRIVATE ENDPOINTS (No public IP policy) is used, hence AzureML SDK v1 is also supported, e.g. accelerated for historic reasons. AI factory managed networking is an acceleration feature itself, as well as Long Term MLOps compatibility (since 2019)</b>
 </p>
 </span>
 </div>
