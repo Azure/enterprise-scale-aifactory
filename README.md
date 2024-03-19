@@ -28,14 +28,14 @@ It is based on the earlier `Enterpries Scale ML (ESML) AI Factory` open source p
 2) `AVM: AI Factory`: Transform BICEP as Azure Verified Modules
 3) `LLMOps template` integration
 
-## Public links/blogs for more info
--	`AI factory with business value in 60h:` Microsoft Customer Story - 
+## Public links/blogs for more info / usage
+-	`AI factory - setup in 60h` - End-2-End pipelines for use case: Howto
     - https://customers.microsoft.com/en-us/story/1653030140221000726-epiroc-manufacturing-azure-machine-learning
 
--	`Capgemini/Sogeti: “ESML AI Factory as a service”`: “SARAH IP”: SARAH - English version (sogeti.se)
-    - https://www.sogeti.se/sarah-eng
+-   `AI factory` - Technical BLOG
+    - https://techcommunity.microsoft.com/t5/ai-machine-learning-blog/predict-steel-quality-with-azure-automl-in-manufacturing/ba-p/3616176
 
--	`Microsoft AI Factory` documentation (CAF/MLOps): Machine learning operations - Cloud Adoption Framework | Microsoft Learn
+-	`Microsoft: AI Factory` documentation (CAF/MLOps): Machine learning operations - Cloud Adoption Framework | Microsoft Learn
     - https://learn.microsoft.com/en-us/azure/cloud-adoption-framework/ready/azure-best-practices/ai-machine-learning-mlops#ai-factory-for-organization-machine-learning-operations
     
 ## Contributing
