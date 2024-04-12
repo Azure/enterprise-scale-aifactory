@@ -27,7 +27,7 @@ fonttools==4.42.0
 google-api-core==2.11.1
 google-auth==2.22.0
 googleapis-common-protos==1.60.0
-idna==3.4
+idna==3.7
 importlib-metadata==6.8.0
 importlib-resources==6.0.1
 iniconfig==2.0.0
