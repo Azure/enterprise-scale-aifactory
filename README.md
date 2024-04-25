@@ -34,6 +34,8 @@ It is based on the earlier `Enterpries Scale ML (ESML) AI Factory` open source p
 
 ## News 2023/2024: coming
 1) `New project type: esml-project-genai`: Support Generative AI, as “project type”. Integrate AI landingzone accelerator as AI Factory plug-and-play (see Main purpose 2). WIP is to complete the Enterprise Scale GenAI project type, in the AI Factory.
+    - From (1): `esml-project-ml` with main services: `Azure Data factory, Azure Machine Learning (MLOps), private AKS cluster, Azure Databricks`
+    - To(2): `esml-project-ml` and `esml-project-genai`, the latter with: `Azure AI studio, Azure OpenAI, Azure Machine Learning (LLMOps,Promptflow, Model catalog), Azure AI Search, CosmosDB, Azure Webapp`
 2) `AVM: AI Factory`: Transform BICEP as Azure Verified Modules
 3) `LLMOps template` integration
 
