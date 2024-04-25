@@ -33,7 +33,7 @@ It is based on the earlier `Enterpries Scale ML (ESML) AI Factory` open source p
 ![AI Factory](./documentation/images/003_onboard_ticket.png)
 
 ## News 2023/2024: coming
-1) `GenAI: 2023 AI Factory`: Support Generative AI, as “project type”. Integrate AI landingzone accelerator as AI Factory plug-and-play (see Main purpose 2). WIP is to complete the Enterprise Scale GenAI project type, in the AI Factory.
+1) `New project type: esml-project-genai`: Support Generative AI, as “project type”. Integrate AI landingzone accelerator as AI Factory plug-and-play (see Main purpose 2). WIP is to complete the Enterprise Scale GenAI project type, in the AI Factory.
 2) `AVM: AI Factory`: Transform BICEP as Azure Verified Modules
 3) `LLMOps template` integration
 
