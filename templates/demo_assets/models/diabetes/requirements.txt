@@ -1,4 +1,4 @@
-mlflow==2.9.2
+mlflow==2.10.0
 azureml-train-automl-runtime==1.54.0.post1
 inference-schema
 azureml-interpret==1.54.0
