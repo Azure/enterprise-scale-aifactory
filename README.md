@@ -15,18 +15,7 @@ It is based on the earlier `Enterpries Scale ML (ESML) AI Factory` open source p
 5) `Enterprise scale & security & battle tested`: Used by customers and partners with MLOps since 2019 (see LINKS) to accelerate the development and delivery of AI solutions, with common tooling & marrying multiple best practices. Private networking (private endpoints), as default.
 
 ### AI Factory - Conceptual sketch
-![AI Factory](./docs/images/001_aifactory.png)
-### AI Factory - 4 main components of the accelerator
-![AI Factory](./docs/images/002_4_components.png)
-### AI Factory - onboard infra via ticket
-![AI Factory](./docs/images/003_onboard_ticket.png)
-### AI Factory in relation to Azure AI landscape
-![AI Factory](./docs/images/004_AI_landscape_ESGenAI_project.png)
-
-## News 2023/2024: coming
-1) `GenAI: 2023 AI Factory`: Support Generative AI, as “project type”. Integrate AI landingzone accelerator as AI Factory plug-and-play (see Main purpose 2). WIP is to complete the Enterprise Scale GenAI project type, in the AI Factory.
-2) `AVM: AI Factory`: Transform BICEP as Azure Verified Modules
-3) `LLMOps template` integration
+![AI Factory](./documentation/images/001_aifactory.png)
 
 ## Public links/blogs for more info / usage
 -	`AI factory - setup in 60h` - End-2-End pipelines for use case: Howto
@@ -38,6 +27,16 @@ It is based on the earlier `Enterpries Scale ML (ESML) AI Factory` open source p
 -	`Microsoft: AI Factory` documentation (CAF/MLOps): Machine learning operations - Cloud Adoption Framework | Microsoft Learn
     - https://learn.microsoft.com/en-us/azure/cloud-adoption-framework/ready/azure-best-practices/ai-machine-learning-mlops#ai-factory-for-organization-machine-learning-operations
     
+### AI Factory - 4 main components of the accelerator
+![AI Factory](./documentation/images/002_4_components.png)
+### AI Factory - onboard infra via ticket
+![AI Factory](./documentation/images/003_onboard_ticket.png)
+
+## News 2023/2024: coming
+1) `GenAI: 2023 AI Factory`: Support Generative AI, as “project type”. Integrate AI landingzone accelerator as AI Factory plug-and-play (see Main purpose 2). WIP is to complete the Enterprise Scale GenAI project type, in the AI Factory.
+2) `AVM: AI Factory`: Transform BICEP as Azure Verified Modules
+3) `LLMOps template` integration
+
 ## Contributing
 
 This project welcomes contributions and suggestions.  Most contributions require you to agree to a
