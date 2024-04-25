@@ -1,0 +1,31 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "aifactorySuffixRG": {
+            "value": "-001"
+        },
+        "commonRGNamePrefix":{
+			"value": "xxx-yyy-"
+		},
+        "locationSuffix": {
+            "value": "weu"
+        },
+        "location": {
+            "value": "westeurope"
+        },
+        "tags": {
+            "value": {
+                "Application Name": "Enterprise Scale ML (ESML)",
+                "BA ID": "NA",
+                "BCIO": "Robin",
+                "Business Area": "NA",
+                "Cost Center": "123456",
+                "Resource Managed By":"The Riddler",
+                "TechnicalContact": "batman@gothamcity.dc_",
+                "Project": "Batcave upgrade",     
+                "Description": "ESML AI Factory"
+            }
+        }
+    }
+}
