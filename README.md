@@ -75,17 +75,22 @@ For full documentation, please visit [`Enterprise Scale AI Factory documentation
 - Provision resources with IaC (BICEP)
 - Automate IaC with (Github Actions or Azure Devops)
 - Easy-to-configure and extend templates: DataOps, MLOps, GenAIOps
+- Aligned with Well-Architected Framework and Cloud Adoption Framework
 - AI Factory project types:
     - **GenAI**: GenAI: Azure AI Foundry with RAG using Azure AI Search
     - **ESML**: DataOps and MLOps with notebooks templates - both Databricks (Pyspark) and Jupyter notebooks(Python). Mix compute & tech, while using same MLOps pipeline
 
-### Project Types (IaC templates)
+### Project Types (IaC templates) - Well-architected Framework
 ![](./documentation/images/aifactory-project-types.png)
 
-### DataOps, MLOps, GenAIOps (templates)
+### DataOps, MLOps, GenAIOps (templates) - Well-architected Framework
+[Read more: Well-Architected Framework AI workload](aka.ms/wafai)
+
 ![](./documentation/images/aifactory-dataops-mlops-genaiops.png)
 
-### Enteprise Scale: AI Ready landingzones
+### Enterprise Scale: AI Ready landingzones - Cloud Adoption Framework
+[Read more: AI Factory in CAF](https://learn.microsoft.com/en-us/azure/cloud-adoption-framework/ready/azure-best-practices/ai-machine-learning-mlops?source=docs)
+
 ![](./documentation/images/aifactory-ai-landingzones.png)
 
 > [!NOTE]
