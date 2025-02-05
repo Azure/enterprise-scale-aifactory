@@ -1,0 +1,3 @@
+[submodule "azure-enterprise-scale-ml"]
+	path = azure-enterprise-scale-ml
+	url = https://github.com/jostrm/azure-enterprise-scale-ml
