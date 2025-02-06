@@ -2,14 +2,17 @@
 
 ![Header](documentation/images/header.png)
 
-Welcome to the Enterprise Scale AIFactory solution accelerator template. <br>
-This is a template repository, bootstrapped with the Enterprise Scale AIFactory submodule (the most common way of leveraging the AIFactory template acceleration)
+Welcome to the official *Enterprise Scale AIFactory* solution accelerator template. <br>
+This is a template repository, bootstrapped with the *Enterprise Scale AIFactory submodule* (the most common way of leveraging the AIFactory template acceleration)
 
-> [!IMPORTANT]
->This project provides a ready-to-run github repo, bootstrapped and connected to the *Enterprise Scale AI Factory Github submodule*. For full documentation visit the documentation section [`Enterprise Scale AI Factory submodule`](https://github.com/jostrm/azure-enterprise-scale-ml/blob/main/documentation/readme.md)
+This repo will leverages resources/templates from the [`Enterprise Scale AI Factory submodule`](https://github.>com/jostrm/azure-enterprise-scale-ml/) including templats for `IaC AI landingzones, DataOps, MLOps, 
+GenAIOps`.
+
+The mirror repo based on this repo, will act as your repo with options as: [Github private, internal, public repo](https://resources.github.com/learn/pathways/administration-governance/essentials/manage-your-repository-visibility-rules-and-settings/), or a [private or public Azure Devops repository](https://learn.microsoft.com/en-us/azure/devops/organizations/projects/make-project-public?view=azure-devops)
+
+>[!NOTE]
+>Since the mirror repo will become your repo (or see BYORepo option), you will not have any failure with tokens/cross-authentication.
 >
-
-This repo will leverages resources/templates from the [`Enterprise Scale AI Factory submodule`](https://github.>com/jostrm/azure-enterprise-scale-ml/) including templats for `IaC AI landingzones, DataOps, MLOps, GenAIOps`. <br>This repo and act as your repo with options as: [Github private, internal, public repo](https://resources.github.com/learn/pathways/administration-governance/essentials/manage-your-repository-visibility-rules-and-settings/), or a [private or public Azure Devops repository](https://learn.microsoft.com/en-us/azure/devops/organizations/projects/make-project-public?view=azure-devops)
 
 ## The purpose of this repo
 This repo, is purposed to bootstrap a repository, that automatically links to the centralized (readonly)submodule `azure-enterprise-scale-ml`, and provides you with templates for YOUR variables, to customize your AI Factory, besides the basic [.env.template](./.env.template) parameters that will end up as Variables in your Github/Azure Devops.
@@ -26,13 +29,17 @@ This repo accelerates even further, below 1h, since leaving only a hand-full of 
 -> Making it a good choice to quickly setup infrastructure securely for AI-hackathons, workshops, education - scenarios where you are OK if naming convention does not comply 100% with your organizations choices, and you don't need to peer it to your Hub - e.g. where `AIFAcotry standalone mode` is OK.
 
 > [!NOTE]
-> You can still go into *advanced mode*, and edit all parameters. You will find them here in the [parameters](aifactory\parameters)
+> You can still go into *advanced mode*, and edit all parameters. You will find them here in the [aifactory/parameters](./aifactory/parameters) folder.
 >
 
-## Setup options
+> [!IMPORTANT]
+>This repo provides a ready-to-run github repo, bootstrapped and connected to the *Enterprise Scale AI Factory Github submodule*. For full documentation visit the documentation section [`Enterprise Scale AI Factory submodule`](https://github.com/jostrm/azure-enterprise-scale-ml/blob/main/documentation/readme.md)
+>
+
+## Setup options - GITHUB
 As a mirror-repo (Github) or "Bring your own repo" (Github or Azure Devops) <br>
 
-After you have copied the  [.env.template.template](./.env.template-.template) as your [.env](./.env) file, you have the options below.
+After you have copied the  [.env.template](./.env.template) as your [.env](./.env) file, you have the options below.
 
 - A) Bootstrap as a mirror-repo in Github, it becomes a private, internal or public Github repo
     - **When to choose**: If you are allowed to create own repos, and Gihub is your preffered choice.
@@ -47,6 +54,10 @@ After you have copied the  [.env.template.template](./.env.template-.template) a
         - [02b-GH-create-or-update-github-variables.sh](./02b-GH-create-or-update-github-variables.sh)
         - [03b-GH-add-aifactory-pipelines-once.sh](./03b-GH-add-aifactory-pipelines-once.sh)
         - [04ab-setup-infra-aifactory.sh](./04ab-setup-infra-aifactory.sh)
+
+## Setup options - Azure Devops
+As of now, only the `advanced mode` is possible. Using either `.yaml` or `classic`. Bootstrap for this is work in progress.
+Please visit the full documentation for here. [Enterprise Scale AI Factory - Setup](https://github.com/jostrm/azure-enterprise-scale-ml/blob/main/documentation/v2/20-29/24-end-2-end-setup.md)
 
 > [!NOTE]
 >   
