@@ -1,34 +1,31 @@
 #!/bin/bash
 
+# Get ObjectID
+# az ad sp show --id AppId --query id -o tsv
+
 # ANSI color codes
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-# Load .env file
-if [ -f .env ]; then
-  set -o allexport
-  source .env
-  set -o allexport -
-else
-  echo "Error: .env file not found."
-  exit 1
-fi
-
 # 1) EDIT Variables ONCE ################### 
-SUBSCRIPTION_ID=$AIFACTORY_SEEDING_KEYVAULT_SUBSCRIPTION_ID
-KEY_VAULT_NAME=$AIFACTORY_SEEDING_KEYVAULT_NAME
-TENANT_ID=$TENANT_ID
-SERVICE_PRINCIPAL_NAME_TEMPLATE="esml-project[XXX]-sp"
-PROJECT_NUMBER_Y="" # A number between 1-999
-PROJECT_NUMBER_XXX="008" # A string with three characters: 001, 023, 123
+SUBSCRIPTION_ID="<your-key-vault-name>" # Seeding keyvault
+KEY_VAULT_NAME="<your-key-vault-name>" # Seeding keyvault
+TENANT_ID="<your-tenant-id>" # Seeding keyvault
+USER_EMAIL="<your-user-email-with-entraID-access-to-create-ServicePrinciples-And-Store-Secrets>"
+SERVICE_PRINCIPAL_NAME_TEMPLATE="<service-principal-name-template-[XXX]>" # User either [XXX] or [Y] somewhere: "esml-project[XXX]-sp", "esml-deployment-project[Y]"
+
+# 2) EDIT Variables FOR EACH new service principle ################### 
+PROJECT_NUMBER_XXX="001" # A string with three characters: 001, 023, 123
+
+# 3* OPTIONAL Variable: Only need to set if using [Y] in SERVICE_PRINCIPAL_NAME_TEMPLATE
+PROJECT_NUMBER_Y="" # A string number between 1-999. Example: "2" 
 
 # EDIT END
 
 ##################### DO NOT CHANGE ANYTHING BELOW #####################
 # Template Names
-SP_NAME_TEMPLATE="esml-projectXXX-sp-id"
 SP_KV_ID_TEMPLATE="esml-projectXXX-sp-id"
 SP_KV_OID_TEMPLATE="esml-projectXXX-sp-oid"
 SP_KV_SECRET_TEMPLATE="esml-projectXXX-sp-secret"
@@ -40,7 +37,7 @@ if [[ $SERVICE_PRINCIPAL_NAME_TEMPLATE == *"[XXX]"* ]]; then
     echo "SERVICE_PRINCIPAL_NAME_TEMPLATE contains [XXX]"
     SERVICE_PRINCIPAL_NAME=$(echo $SERVICE_PRINCIPAL_NAME_TEMPLATE | sed "s/\[XXX\]/$PROJECT_NUMBER_XXX/")
 elif [[ $SERVICE_PRINCIPAL_NAME_TEMPLATE == *"[Y]"* ]]; then
-    echo "SERVICE_PRINCIPAL_NAME_TEMPLATE does not contains [Y]"
+    echo "SERVICE_PRINCIPAL_NAME_TEMPLATE contains [Y]"
     SERVICE_PRINCIPAL_NAME=$(echo $SERVICE_PRINCIPAL_NAME_TEMPLATE | sed "s/\[Y\]/$PROJECT_NUMBER_XXX/")
 fi
 
@@ -53,12 +50,6 @@ echo -e "${YELLOW}APP ID name as KV SECRET${NC} in seeding keyvault will have th
 echo -e "${YELLOW}OBJECT ID NAME as KV SECRET${NC} in seeding keyvault will have the name: ${GREEN}"$SP_KV_OID"${NC}"
 echo -e "${YELLOW}SECRET NAME as KV SECRET${NC} in seeding keyvault will have the name: ${GREEN}"$SP_KV_SECRET"${NC}"
 echo -e "${GREEN}Note: If exists: ${NC}If Service principla already exists, then ObjectID will be updated in seeding keyvault.${NC}"
-
-# APPLICATIONS - To delete: Delete Application, and its service principal is also deleted.
-
-#SP_OID='' # Set RBAC on this. Enterprise Application Object ID
-#SP_APP_ID='' # Enterprise Application App_ID is same as APP_REG_ID
-#APP_REG_OID='' # Set IMAGE on this. App Registration Object ID
 
 # Prompt the user for confirmation
 read -p "Continue (Y/n)? " choice
@@ -107,7 +98,6 @@ if [ -z "$SP_EXISTS" ]; then
     #Print APP_ID
     echo -e "${GREEN}APP_ID: {$APP_ID} ${NC}"
     echo -e "${GREEN}OBJECT_ID: {$OBJECT_ID} ${NC}"
-    #echo -e "${GREEN}PASSWORD: {$PASSWORD} ${NC}"
 
     az keyvault secret set --vault-name $KEY_VAULT_NAME --name ${SP_KV_APP_ID} --value $APP_ID
     az keyvault secret set --vault-name $KEY_VAULT_NAME --name ${SP_KV_OID} --value $OBJECT_ID
@@ -165,3 +155,8 @@ else
     echo -e "${RED}Failed to set logo URL${NC}"
     exit 1
 fi
+
+# APPLICATIONS - To delete: Delete Application, and its service principal is also deleted.
+#SP_OID='' # Set RBAC on this. Enterprise Application Object ID
+#SP_APP_ID='' # Enterprise Application App_ID is same as APP_REG_ID
+#APP_REG_OID='' # Set IMAGE on this. App Registration Object ID

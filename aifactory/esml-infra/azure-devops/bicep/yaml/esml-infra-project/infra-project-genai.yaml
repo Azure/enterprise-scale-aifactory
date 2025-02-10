@@ -1,0 +1,116 @@
+trigger:
+  branches:
+    include:
+      - release/project*
+variables:
+- template: ../variables/variables.yaml
+- name: runNetworkingVar
+  value: false
+
+stages:
+- stage: Dev_GenAI_Project
+  displayName: Dev GenAI Project
+  variables:
+    dev_test_prod: "dev"
+    dev_test_prod_sub_id: "$(dev_sub_id)"
+    admin_projectType: "genai-1"
+  jobs:
+    - deployment: ESGenAI_Networking
+      condition: eq(variables['runNetworkingVar'], 'true')
+      displayName: Deploy Private Network
+      pool:
+        vmImage: windows-latest
+      environment: Dev  
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - template: ./jobs/job-1-genai-networking.yaml
+                parameters:
+                  serviceConnection: ${{ variables.dev_service_connection }}
+    - deployment: ESGenAI_Services
+      condition: or(succeeded(), eq(variables['runNetworkingVar'], 'false'))
+      dependsOn: ESGenAI_Networking
+      displayName: Deploy GenAI services,Personas,RBAC,ACL,CAF & WAF Policys
+      pool:
+        vmImage: windows-latest
+      environment: Dev  
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - template: ./jobs/job-2-genai-services.yaml
+                parameters:
+                  serviceConnection: ${{ variables.dev_service_connection }}
+- stage: Stage_GenAI_Project
+  displayName: Stage GenAI Project
+  variables:
+    dev_test_prod: "test"
+    dev_test_prod_sub_id: "$(test_sub_id)"
+    admin_projectType: "genai-1"
+  jobs:
+    - deployment: ESGenAI_Networking
+      condition: eq(variables['runNetworkingVar'], 'true')
+      displayName: Deploy Private Network
+      pool:
+        vmImage: windows-latest
+      environment: Stage  
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - template: ./jobs/job-1-genai-networking.yaml
+                parameters:
+                  serviceConnection: ${{ variables.test_service_connection }}
+    - deployment: ESGenAI_Services
+      condition: or(succeeded(), eq(variables['runNetworkingVar'], 'false'))
+      dependsOn: ESGenAI_Networking
+      displayName: Deploy GenAI services,Personas,RBAC,ACL,CAF & WAF Policys
+      pool:
+        vmImage: windows-latest
+      environment: Stage  
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - template: ./jobs/job-2-genai-services.yaml
+                parameters:
+                  serviceConnection: ${{ variables.test_service_connection }}
+- stage: Prod_GenAI_Project
+  displayName: Prod GenAI Project
+  variables:
+    dev_test_prod: "prod"
+    dev_test_prod_sub_id: "$(prod_sub_id)"
+    admin_projectType: "genai-1"
+  jobs:
+    - deployment: ESGenAI_Networking
+      condition: eq(variables['runNetworkingVar'], 'true')
+      displayName: Deploy Private Network
+      pool:
+        vmImage: windows-latest
+      environment: Prod  
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - template: ./jobs/job-1-genai-networking.yaml
+                parameters:
+                  serviceConnection: ${{ variables.prod_service_connection }}
+    - deployment: ESGenAI_Services
+      condition: or(succeeded(), eq(variables['runNetworkingVar'], 'false'))
+      dependsOn: ESGenAI_Networking
+      displayName: Deploy GenAI services,Personas,RBAC,ACL,CAF & WAF Policys
+      pool:
+        vmImage: windows-latest
+      environment: Prod
+      variables:
+        dev_test_prod: "prod"
+        dev_test_prod_sub_id: "$(prod_sub_id)"
+        admin_projectType: "genai-1"
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - template: ./jobs/job-2-genai-services.yaml
+                parameters:
+                  serviceConnection: ${{ variables.prod_service_connection }}

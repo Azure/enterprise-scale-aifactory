@@ -1,0 +1,69 @@
+trigger:
+  branches:
+    include:
+      - release/common*
+
+variables:
+- template: ../variables/variables.yaml
+
+stages:
+- stage: Dev
+  displayName: AIFactory_CMN_Dev
+  variables:
+    dev_test_prod: "dev"
+    dev_test_prod_sub_id: $(dev_sub_id)
+    cidr_range: $(dev_cidr_range)
+  jobs:
+    - deployment: AIFactory_CMN_Dev
+      displayName: AIFactory_CMN_Dev
+      pool:
+        vmImage: windows-latest
+      environment: Dev  
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - template: ./jobs/job-1-aif-cmn.yaml
+                parameters:
+                  serviceConnection: ${{ variables.dev_service_connection }}
+- stage: Stage
+  dependsOn: Dev
+  displayName: AIFactory_CMN_Stage
+  variables:
+    dev_test_prod: "test"
+    dev_test_prod_sub_id: $(test_sub_id)
+    cidr_range: $(test_cidr_range)
+  jobs:
+    - deployment: AIFactory_CMN_Stage
+      displayName: AIFactory_CMN_Stage
+      pool:
+        vmImage: windows-latest
+      environment: Stage
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - template: ./jobs/job-1-aif-cmn.yaml
+                parameters:
+                  serviceConnection: ${{ variables.test_service_connection }}
+- stage: Prod
+  dependsOn: Stage
+  displayName: AIFactory_CMN_Prod
+  variables:
+    dev_test_prod: "prod"
+    dev_test_prod_sub_id: $(prod_sub_id)
+    cidr_range: $(prod_cidr_range)
+  jobs:
+    - deployment: AIFactory_CMN_Prod
+      displayName: AIFactory_CMN_Prod
+      pool:
+        vmImage: windows-latest
+      environment: Prod
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - template: ./jobs/job-1-aif-cmn.yaml
+                parameters:
+                  serviceConnection: ${{ variables.prod_service_connection }}
+  
