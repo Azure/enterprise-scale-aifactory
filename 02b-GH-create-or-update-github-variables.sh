@@ -81,6 +81,7 @@ for env in "${environments[@]}"; do
     create_or_update_variable $env "AIFACTORY_SUFFIX" "$AIFACTORY_SUFFIX"
     create_or_update_variable $env "AIFACTORY_PREFIX" "$AIFACTORY_PREFIX"
     create_or_update_variable $env "TENANT_AZUREML_OID" "$TENANT_AZUREML_OID"
+    create_or_update_variable $env "LAKE_PREFIX" "$LAKE_PREFIX"
 
     # Cost optimization
     create_or_update_variable $env "USE_COMMON_ACR_FOR_PROJECTS" "$USE_COMMON_ACR_FOR_PROJECTS"
@@ -88,6 +89,8 @@ for env in "${environments[@]}"; do
     # Seeding keyvault
     create_or_update_variable $env "AIFACTORY_SEEDING_KEYVAULT_NAME" "$AIFACTORY_SEEDING_KEYVAULT_NAME"
     create_or_update_variable $env "AIFACTORY_SEEDING_KEYVAULT_RG" "$AIFACTORY_SEEDING_KEYVAULT_RG"
+    create_or_update_variable $env "COMMON_SERVICE_PRINCIPAL_KV_S_NAME_APPID" "$COMMON_SERVICE_PRINCIPAL_KV_S_NAME_APPID"
+    create_or_update_variable $env "COMMON_SERVICE_PRINCIPAL_KV_S_NAME_SECRET" "$COMMON_SERVICE_PRINCIPAL_KV_S_NAME_SECRET"
 
     # Networking
     create_or_update_variable $env "AIFACTORY_LOCATION_SHORT" "$AIFACTORY_LOCATION_SHORT"

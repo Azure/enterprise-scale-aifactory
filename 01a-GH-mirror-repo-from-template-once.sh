@@ -243,6 +243,7 @@ for env in "${environments[@]}"; do
     create_or_update_variable $env "AIFACTORY_SUFFIX" "$AIFACTORY_SUFFIX"
     create_or_update_variable $env "AIFACTORY_PREFIX" "$AIFACTORY_PREFIX"
     create_or_update_variable $env "TENANT_AZUREML_OID" "$TENANT_AZUREML_OID"
+    create_or_update_variable $env "LAKE_PREFIX" "$LAKE_PREFIX"
 
     # Cost optimization
     create_or_update_variable $env "USE_COMMON_ACR_FOR_PROJECTS" "$USE_COMMON_ACR_FOR_PROJECTS"
@@ -250,6 +251,8 @@ for env in "${environments[@]}"; do
     # Seeding keyvault
     create_or_update_variable $env "AIFACTORY_SEEDING_KEYVAULT_NAME" "$AIFACTORY_SEEDING_KEYVAULT_NAME"
     create_or_update_variable $env "AIFACTORY_SEEDING_KEYVAULT_RG" "$AIFACTORY_SEEDING_KEYVAULT_RG"
+    create_or_update_variable $env "COMMON_SERVICE_PRINCIPAL_KV_S_NAME_APPID" "$COMMON_SERVICE_PRINCIPAL_KV_S_NAME_APPID"
+    create_or_update_variable $env "COMMON_SERVICE_PRINCIPAL_KV_S_NAME_SECRET" "$COMMON_SERVICE_PRINCIPAL_KV_S_NAME_SECRET"
 
     # Networking
     create_or_update_variable $env "AIFACTORY_LOCATION_SHORT" "$AIFACTORY_LOCATION_SHORT"
@@ -280,7 +283,7 @@ create_or_update_variable "dev" "AIFACTORY_CIDR_XX" "$DEV_CIDR_RANGE"
 create_or_update_variable "dev" "GH_CLI_VERSION" "$gh_version"
 
 # DEV: Secrets
-create_or_update_secret "dev" "AZURE_CREDENTIALS" "replace_with_dev_sp_credencials"
+create_or_update_secret "dev" "AZURE_CREDENTIALS" "replace_with_dev_sp_credentials"
 
 # STAGE variables
 create_or_update_variable "stage" "AZURE_LOCATION" "$AIFACTORY_LOCATION"
@@ -288,7 +291,7 @@ create_or_update_variable "stage" "AZURE_SUBSCRIPTION_ID" "$STAGE_SUBSCRIPTION_I
 create_or_update_variable "stage" "AIFACTORY_CIDR_XX" "$STAGE_CIDR_RANGE"
 
 # STAGE: Secrets
-create_or_update_secret "stage" "AZURE_CREDENTIALS" "replace_with_stage_sp_credencials"
+create_or_update_secret "stage" "AZURE_CREDENTIALS" "replace_with_stage_sp_credentials"
 
 # PROD variables
 create_or_update_variable "prod" "AZURE_LOCATION" "$AIFACTORY_LOCATION"
@@ -296,7 +299,7 @@ create_or_update_variable "prod" "AZURE_SUBSCRIPTION_ID" "$PROD_SUBSCRIPTION_ID"
 create_or_update_variable "prod" "AIFACTORY_CIDR_XX" "$PROD_CIDR_RANGE"
 
 # PROD: Secrets
-create_or_update_secret "prod" "AZURE_CREDENTIALS" "replace_with_prod_sp_credencials"
+create_or_update_secret "prod" "AZURE_CREDENTIALS" "replace_with_prod_sp_credentials"
 
 # TODO Future: dev.env / stage.env / prod.env
 # gh secret set -f prod.env --env prod

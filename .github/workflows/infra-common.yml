@@ -1,4 +1,4 @@
-name: infra-common
+name: infra-aifactory-common
 
 on:
   workflow_dispatch:
@@ -13,7 +13,8 @@ env:
   admin_locationSuffix: "${{ vars.AIFACTORY_LOCATION_SHORT }}" # Region location suffix in ESML settings: [weu,uks,swe,sdc]
   dev_test_prod_sub_id: "${{ vars.AZURE_SUBSCRIPTION_ID }}" # "a1234567-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
   dev_test_prod: "${{ vars.AZURE_ENV_NAME }}" # ESML AIFactory environment: [dev,test,prod]
-  admin_input_keyvault_name: "${{ secrets.AIFACTORY_SEEDING_KEYVAULT_SUBSCRIPTION_ID }}" # seeding keyvault, subscription id
+  admin_input_keyvault_subscription: "${{ secrets.AIFACTORY_SEEDING_KEYVAULT_SUBSCRIPTION_ID }}" # seeding keyvault, subscription id
+  admin_input_keyvault_name: "${{ vars.AIFACTORY_SEEDING_KEYVAULT_NAME }}" # seeding keyvault, subscription id
   admin_input_keyvault_rg: "${{ vars.AIFACTORY_SEEDING_KEYVAULT_RG }}" #seeding keyvault, resource group
   aifactorySuffixRG: "${{ vars.AIFACTORY_SUFFIX }}"  # Max 6 characters. <company>-<aifactoryname> Examples: ["acme-ai-", "mrvel-1-", "contoso-", "ms-ai-"]
   admin_aifactoryPrefixRG: "${{ vars.AIFACTORY_PREFIX }}"  # <company>-<aifactoryname> Examples: ["acme-ai-", "mrvel-1-", "contoso-", "ms-ai-"]
@@ -39,12 +40,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: true
-      - name: 11-Common RG and RBAC
+      - name: 1_az_bicep_common_rg
         uses: azure/cli@v2
         with:
           inlineScript: |
             az deployment sub create \
-            --name "esml-cmn-${{ env.dev_test_prod }}-${{ env.admin_locationSuffix }}-${{ env.aifactorySuffixRG }}-DeplRG" \
+            --name "esml-cmn-${{ env.dev_test_prod }}${{ env.admin_locationSuffix }}${{ env.aifactorySuffixRG }}-DeplRG" \
             --subscription "${{ env.dev_test_prod_sub_id }}" \
             --location "${{ env.admin_location }}" \
             --template-file "azure-enterprise-scale-ml\environment_setup\aifactory\bicep\esml-common\main\11-rgCommon.bicep" \
@@ -52,38 +53,41 @@ jobs:
             --parameters @"./aifactory/parameters/10-esml-globals-1.json" \
             --parameters locationSuffix="${{ env.admin_locationSuffix }}" \
             --parameters location="${{ env.admin_location }}" \
+            --parameters commonRGNamePrefix="${{ env.admin_aifactoryPrefixRG }}" \
             --parameters env="${{ env.dev_test_prod }}" \
             --parameters aifactorySuffixRG="${{ env.aifactorySuffixRG }}" \
             --parameters technicalAdminsObjectID="${{ env.technical_admins_ad_object_id }}" \
             --parameters technicalAdminsEmail="${{ env.technical_admins_email }}"
           azcliversion: latest
-      - name: 12-Common-Networking
+      - name: 02_az_bicep_private_networking
         uses: azure/cli@v2
         with:
           inlineScript: |
             az deployment sub create \
-            --name "esml-cmn${{ env.dev_test_prod }}-${{ env.aifactorySuffixRG }}-${{ env.aiResourceSuffix }}Subnets" \
+            --name "esml-cmn${{ env.dev_test_prod }}${{ env.aifactorySuffixRG }}${{ env.aiResourceSuffix }}${{ env.admin_locationSuffix }}Subnets" \
             --subscription "${{ env.dev_test_prod_sub_id }}" \
             --location "${{ env.admin_location }}" \
             --template-file "azure-enterprise-scale-ml\environment_setup\aifactory\bicep\esml-common\main\12-networkCommon.bicep" \
             --parameters @"./aifactory/parameters/10-esml-globals-1.json" \
             --parameters @"./aifactory/parameters/10-esml-globals-2-12_13_21_22.json" \
             --parameters @"./aifactory/parameters/10-esml-globals-3-12_13.json" \
+            --parameters @"./aifactory/parameters/10-esml-globals-override.json" \
             --parameters @"./aifactory/parameters/12-esml-cmn-parameters.json" \
             --parameters locationSuffix="${{ env.admin_locationSuffix }}" \
             --parameters location="${{ env.admin_location }}" \
+            --parameters commonRGNamePrefix="${{ env.admin_aifactoryPrefixRG }}" \
             --parameters env="${{ env.dev_test_prod }}" \
             --parameters cidr_range="${{ env.cidr_range }}" \
             --parameters aifactorySuffixRG="${{ env.aifactorySuffixRG }}" \
             --parameters commonResourceSuffix="${{ env.aiResourceSuffix }}" \
             --parameters IPwhiteList="${{ env.technical_admins_bastion_IP_whitelist }}"
           azcliversion: latest
-      - name: '13-Deploy resources'
+      - name: 03_az_bicep_deploy_resources
         uses: azure/cli@v2
         with:
           inlineScript: |
             az deployment sub create \
-            --name "esml-cmn-${{ env.dev_test_prod }}-${{ env.admin_locationSuffix }}-${{ env.aifactorySuffixRG }}-${{ env.aiResourceSuffix }}-DeplRes" \
+            --name "esml-cmn-${{ env.dev_test_prod }}${{ env.admin_locationSuffix }}${{ env.aifactorySuffixRG }}${{ env.aiResourceSuffix }}-DeplRes" \
             --subscription "${{ env.dev_test_prod_sub_id }}" \
             --location "${{ env.admin_location }}" \
             --template-file "azure-enterprise-scale-ml\environment_setup\aifactory\bicep\esml-common\main\13-rgLevel.bicep" \
@@ -94,9 +98,11 @@ jobs:
             --parameters @"./aifactory/parameters/10-esml-globals-4-13_21_22.json" \
             --parameters @"./aifactory/parameters/10-esml-globals-5-13_23.json" \
             --parameters @"./aifactory/parameters/11-esml-globals-11_13.json" \
+            --parameters @"./aifactory/parameters/10-esml-globals-override.json" \
             --parameters @"./aifactory/parameters/13-esml-cmn-parameters.json" \
             --parameters locationSuffix="${{ env.admin_locationSuffix }}" \
             --parameters location="${{ env.admin_location }}" \
+            --parameters commonRGNamePrefix="${{ env.admin_aifactoryPrefixRG }}" \
             --parameters env="${{ env.dev_test_prod }}" \
             --parameters aifactorySuffixRG="${{ env.aifactorySuffixRG }}" \
             --parameters resourceSuffix="${{ env.aiResourceSuffix }}" \
