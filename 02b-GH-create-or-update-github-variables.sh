@@ -122,7 +122,6 @@ create_or_update_variable "dev" "AIFACTORY_CIDR_XX" "$DEV_CIDR_RANGE"
 create_or_update_variable "dev" "GH_CLI_VERSION" "$gh_version"
 
 # DEV: Secrets
-#create_or_update_secret "dev" "AZURE_SUBSCRIPTION_ID" "$DEV_SUBSCRIPTION_ID"
 #create_or_update_secret "dev" "AZURE_CREDENTIALS" "replace_with_dev_sp_credencials"
 
 # STAGE variables
@@ -132,7 +131,6 @@ create_or_update_variable "stage" "AZURE_SUBSCRIPTION_ID" "$STAGE_SUBSCRIPTION_I
 create_or_update_variable "stage" "AIFACTORY_CIDR_XX" "$STAGE_CIDR_RANGE"
 
 # STAGE: Secrets
-#create_or_update_secret "stage" "AZURE_SUBSCRIPTION_ID" "$STAGE_SUBSCRIPTION_ID"
 #create_or_update_secret "stage" "AZURE_CREDENTIALS" "replace_with_stage_sp_credencials"
 
 # PROD variables
@@ -142,5 +140,4 @@ create_or_update_variable "prod" "AZURE_SUBSCRIPTION_ID" "$PROD_SUBSCRIPTION_ID"
 create_or_update_variable "prod" "AIFACTORY_CIDR_XX" "$PROD_CIDR_RANGE"
 
 # PROD: Secrets
-#create_or_update_secret "prod" "AZURE_SUBSCRIPTION_ID" "$PROD_SUBSCRIPTION_ID"
 #create_or_update_secret "prod" "AZURE_CREDENTIALS" "replace_with_prod_sp_credencials"

@@ -241,3 +241,24 @@ Make sure you have done the common part, e.g. [BOOTSTRAP - Common for A and B](#
 - B2) **Do steps A2,A3,A4,A5** mentioned in previous section [BOOTSTRAP Option A) Bring-Your-Own-Repo](#bootstrap-option-a-bring-your-own-repo)
 
 DONE!
+
+# MORE INFO: Add or Refresh Submodule
+
+**Add - with long path**
+
+```sh
+git config --system core.longpaths true
+```
+
+**Add**
+
+```sh
+git submodule add https://github.com/jostrm/azure-enterprise-scale-ml
+```
+
+**Refresh**
+
+```sh
+git submodule update --init --recursive
+git submodule foreach 'git checkout main || git checkout -b main origin/main'
+```

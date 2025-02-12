@@ -16,7 +16,7 @@ env:
   admin_input_keyvault_subscription: "${{ secrets.AIFACTORY_SEEDING_KEYVAULT_SUBSCRIPTION_ID }}" # seeding keyvault, subscription id
   admin_input_keyvault_name: "${{ vars.AIFACTORY_SEEDING_KEYVAULT_NAME }}" # seeding keyvault, subscription id
   admin_input_keyvault_rg: "${{ vars.AIFACTORY_SEEDING_KEYVAULT_RG }}" #seeding keyvault, resource group
-  aifactorySuffixRG: "${{ vars.AIFACTORY_SUFFIX }}"  # Max 6 characters. <company>-<aifactoryname> Examples: ["acme-ai-", "mrvel-1-", "contoso-", "ms-ai-"]
+  aifactorySuffixRG: "${{ vars.AIFACTORY_SUFFIX }}"   # <-XXX> If you have mutliple AIFactory's in different regions: Exampless: ["-001", "-002", "-003"]
   admin_aifactoryPrefixRG: "${{ vars.AIFACTORY_PREFIX }}"  # <company>-<aifactoryname> Examples: ["acme-ai-", "mrvel-1-", "contoso-", "ms-ai-"]
   cidr_range: "${{ vars.AIFACTORY_CIDR_XX }}" # XX = "17" 
   aiResourceSuffix: "-001" # Suffix on resources within the resource group: -001, -002
