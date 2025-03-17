@@ -43,17 +43,26 @@ After you have copied the  [.env.template](./.env.template) as your [.env](./.en
 
 - A) Bootstrap as a mirror-repo in Github, it becomes a private, internal or public Github repo
     - **When to choose**: If you are allowed to create own repos, and Gihub is your preffered choice.
-    - **Automation scripts to run**: The scripts below, will bootstrap an empty repo.
-        - [01a-GH-mirror-repo-from-template-once.sh](./01a-GH-mirror-repo-from-template-once.sh)
-        - [03b-GH-add-aifactory-pipelines-once.sh](./03b-GH-add-aifactory-pipelines-once.sh)
-        - [04ab-setup-infra-aifactory.sh](./04ab-setup-infra-aifactory.sh)
+    - **Automation scripts to run**:  [Bootstrapping a new AIFactory](documentation/bootstrapping.md), or do quickstart: 
+    - **Quickstart:**
+        - 1) [01a-GH-mirror-repo-from-template-once.sh](./01a-GH-mirror-repo-from-template-once.sh)
+        - 2) VS code open up a new Window with your new repo - Rename `.env.template` to `.env` and edit it. 
+            - Edit the PARAMETER folder also. 
+        - 3) Go to Github.com to your repo, and edit the secret: `AZURE_CREDENTIALS` - it should be formatted as follows:
+               ```json
+                {
+                    "clientId": "your-client-id-aka-appId",
+                    "clientSecret": "your-client-secret-aka-servicPrincipalSecret",
+                    "subscriptionId": "your-subscription-id",
+                    "tenantId": "your-tenant-id"
+                }
+                ```
+        - 4) Run at least 2 Github Actions workflows at Github.com | or: [04ab-setup-infra-aifactory.sh](./04ab-setup-infra-aifactory.sh)
+            - infra-common.yaml
+            - infra-project-genai.yaml
 - B) Bring your own "empty" repo 
     - **When to choose**: If your organization don't allow you to create repos, or if you preffer Azure Devops.
-    - **Automation scripts to run**: The scripts below, will bootstrap an empty repo.
-        - [01b-BYORepo-init-template-files-once.sh](./01b-BYORepo-init-template-files-once.sh)
-        - [02b-GH-create-or-update-github-variables.sh](./02b-GH-create-or-update-github-variables.sh)
-        - [03b-GH-add-aifactory-pipelines-once.sh](./03b-GH-add-aifactory-pipelines-once.sh)
-        - [04ab-setup-infra-aifactory.sh](./04ab-setup-infra-aifactory.sh)
+    - **Automation scripts to run**: See full instructions here:  [Bootstrapping a new AIFactory](documentation/bootstrapping.md)
 
 ## Setup options - Azure Devops
 As of now, only the `advanced mode` is possible. Using either `.yaml` or `classic`. Bootstrap for this is work in progress.

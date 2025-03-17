@@ -52,7 +52,7 @@ submodule_path="azure-enterprise-scale-ml"  # Replace with the actual path to yo
 
 ################### VARIABLES ###################
 copy_notebooks=false
-init_parameters=false
+init_parameters=true
 init_esml_util=true
 ################### VARIABLES ###################
 try
