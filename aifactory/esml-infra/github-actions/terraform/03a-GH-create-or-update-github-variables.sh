@@ -53,6 +53,10 @@ create_or_update_secret() {
   fi
 }
 
+# Prompt user for orchestrator choice
+echo -e "${YELLOW}Do you want to use overwrite AZURE_CREDENTIALS with dummy value? Usually only the 1st time this is needed, to create the variable in Github (Enter 'y' or 'n')${NC}"
+read -p "overwrite_azure_credential: " overwrite_azure_credential
+
 echo -e "${YELLOW}Bootstraps config from .env as Github environment variables and secrets. ${NC}"
 
 # Get the GitHub CLI version
@@ -60,6 +64,15 @@ gh_version=$(gh --version | grep -oP '\d+\.\d+\.\d+' | head -n 1)
 
 # Define environments
 environments=("dev" "stage" "prod")
+
+gh api --method PUT -H "Accept: application/vnd.github+json" repos/$GITHUB_NEW_REPO/environments/dev
+create_or_update_variable "dev" "AZURE_ENV_NAME" "dev"
+
+gh api --method PUT -H "Accept: application/vnd.github+json" repos/$GITHUB_NEW_REPO/environments/stage
+create_or_update_variable "stage" "AZURE_ENV_NAME" "test"
+
+gh api --method PUT -H "Accept: application/vnd.github+json" repos/$GITHUB_NEW_REPO/environments/prod
+create_or_update_variable "prod" "AZURE_ENV_NAME" "prod"
 
 # AI Factory globals: variables and secrets
 for env in "${environments[@]}"; do
@@ -70,13 +83,26 @@ for env in "${environments[@]}"; do
     create_or_update_variable $env "AIFACTORY_LOCATION_SHORT" "$AIFACTORY_LOCATION_SHORT"
     create_or_update_variable $env "AIFACTORY_SUFFIX" "$AIFACTORY_SUFFIX"
     create_or_update_variable $env "AIFACTORY_PREFIX" "$AIFACTORY_PREFIX"
+    create_or_update_variable $env "TENANT_AZUREML_OID" "$TENANT_AZUREML_OID"
+    create_or_update_variable $env "LAKE_PREFIX" "$LAKE_PREFIX"
 
+    #RBAC model
+    create_or_update_variable $env "USE_AD_GROUPS" "$USE_AD_GROUPS"
+    create_or_update_variable $env "GROUPS_PROJECT_MEMBERS_ESML" "$GROUPS_PROJECT_MEMBERS_ESML"
+    create_or_update_variable $env "GROUPS_PROJECT_MEMBERS_GENAI_1" "$GROUPS_PROJECT_MEMBERS_GENAI_1"
+    create_or_update_variable $env "GROUPS_CORETEAM_MEMBERS" "$GROUPS_CORETEAM_MEMBERS"
+
+    # Other
+    create_or_update_variable $env "KEYVAULT_SOFT_DELETE" "$KEYVAULT_SOFT_DELETE"
+    
     # Cost optimization
     create_or_update_variable $env "USE_COMMON_ACR_FOR_PROJECTS" "$USE_COMMON_ACR_FOR_PROJECTS"
 
     # Seeding keyvault
     create_or_update_variable $env "AIFACTORY_SEEDING_KEYVAULT_NAME" "$AIFACTORY_SEEDING_KEYVAULT_NAME"
     create_or_update_variable $env "AIFACTORY_SEEDING_KEYVAULT_RG" "$AIFACTORY_SEEDING_KEYVAULT_RG"
+    create_or_update_variable $env "COMMON_SERVICE_PRINCIPAL_KV_S_NAME_APPID" "$COMMON_SERVICE_PRINCIPAL_KV_S_NAME_APPID"
+    create_or_update_variable $env "COMMON_SERVICE_PRINCIPAL_KV_S_NAME_SECRET" "$COMMON_SERVICE_PRINCIPAL_KV_S_NAME_SECRET"
 
     # Networking
     create_or_update_variable $env "AIFACTORY_LOCATION_SHORT" "$AIFACTORY_LOCATION_SHORT"
@@ -88,7 +114,7 @@ for env in "${environments[@]}"; do
     create_or_update_variable $env "PROJECT_SERVICE_PRINCIPAL_KV_S_NAME_APPID" "$PROJECT_SERVICE_PRINCIPAL_KV_S_NAME_APPID"
     create_or_update_variable $env "PROJECT_SERVICE_PRINCIPAL_KV_S_NAME_OID" "$PROJECT_SERVICE_PRINCIPAL_KV_S_NAME_OID"
     create_or_update_variable $env "PROJECT_SERVICE_PRINCIPAL_KV_S_NAME_S" "$PROJECT_SERVICE_PRINCIPAL_KV_S_NAME_S"
-    
+
     # Misc
     create_or_update_variable $env "RUN_JOB1_NETWORKING" "true"
 
@@ -101,32 +127,34 @@ for env in "${environments[@]}"; do
 done
 
 # DEV variables
-gh api --method PUT -H "Accept: application/vnd.github+json" repos/$GITHUB_NEW_REPO/environments/dev
-create_or_update_variable "dev" "AZURE_ENV_NAME" "dev"
 create_or_update_variable "dev" "AZURE_LOCATION" "$AIFACTORY_LOCATION"
 create_or_update_variable "dev" "AZURE_SUBSCRIPTION_ID" "$DEV_SUBSCRIPTION_ID"
+create_or_update_variable "dev" "AIFACTORY_CIDR_XX" "$DEV_CIDR_RANGE"
 create_or_update_variable "dev" "GH_CLI_VERSION" "$gh_version"
 
 # DEV: Secrets
 #create_or_update_secret "dev" "AZURE_SUBSCRIPTION_ID" "$DEV_SUBSCRIPTION_ID"
-#create_or_update_secret "dev" "AZURE_CREDENTIALS" "replace_with_dev_sp_credencials"
+if [[ "$overwrite_azure_credential" == "y" ]]; then
+  create_or_update_secret "dev" "AZURE_CREDENTIALS" "replace_with_dev_sp_credentials"
+fi
 
 # STAGE variables
-gh api --method PUT -H "Accept: application/vnd.github+json" repos/$GITHUB_NEW_REPO/environments/stage
-create_or_update_variable "stage" "AZURE_ENV_NAME" "test"
 create_or_update_variable "stage" "AZURE_LOCATION" "$AIFACTORY_LOCATION"
-create_or_update_variable "stage" "AZURE_SUBSCRIPTION_ID" "$STAGE_SUBSCRIPTION_ID" 
+create_or_update_variable "stage" "AZURE_SUBSCRIPTION_ID" "$STAGE_SUBSCRIPTION_ID"
+create_or_update_variable "stage" "AIFACTORY_CIDR_XX" "$STAGE_CIDR_RANGE"
 
 # STAGE: Secrets
 #create_or_update_secret "stage" "AZURE_SUBSCRIPTION_ID" "$STAGE_SUBSCRIPTION_ID"
-#create_or_update_secret "stage" "AZURE_CREDENTIALS" "replace_with_stage_sp_credencials"
-
+if [[ "$overwrite_azure_credential" == "y" ]]; then
+  create_or_update_secret "stage" "AZURE_CREDENTIALS" "replace_with_stage_sp_credentials"
+fi
 # PROD variables
-gh api --method PUT -H "Accept: application/vnd.github+json" repos/$GITHUB_NEW_REPO/environments/prod
-create_or_update_variable "prod" "AZURE_ENV_NAME" "prod"
 create_or_update_variable "prod" "AZURE_LOCATION" "$AIFACTORY_LOCATION"
 create_or_update_variable "prod" "AZURE_SUBSCRIPTION_ID" "$PROD_SUBSCRIPTION_ID"
+create_or_update_variable "prod" "AIFACTORY_CIDR_XX" "$PROD_CIDR_RANGE"
 
 # PROD: Secrets
 #create_or_update_secret "prod" "AZURE_SUBSCRIPTION_ID" "$PROD_SUBSCRIPTION_ID"
-#create_or_update_secret "prod" "AZURE_CREDENTIALS" "replace_with_prod_sp_credencials"
+if [[ "$overwrite_azure_credential" == "y" ]]; then
+  create_or_update_secret "prod" "AZURE_CREDENTIALS" "replace_with_prod_sp_credentials"
+fi

@@ -5,7 +5,7 @@ trigger:
 variables:
 - template: ../variables/variables.yaml
 - name: runNetworkingVar
-  value: false
+  value: true
 
 stages:
 - stage: Dev_GenAI_Project
@@ -28,6 +28,7 @@ stages:
               - template: ./jobs/job-1-genai-networking.yaml
                 parameters:
                   serviceConnection: ${{ variables.dev_service_connection }}
+                  serviceConnectionSeeding: ${{ variables.dev_seeding_kv_service_connection }}
     - deployment: ESGenAI_Services
       condition: or(succeeded(), eq(variables['runNetworkingVar'], 'false'))
       dependsOn: ESGenAI_Networking
@@ -42,6 +43,7 @@ stages:
               - template: ./jobs/job-2-genai-services.yaml
                 parameters:
                   serviceConnection: ${{ variables.dev_service_connection }}
+                  serviceConnectionSeeding: ${{ variables.dev_seeding_kv_service_connection }}
 - stage: Stage_GenAI_Project
   displayName: Stage GenAI Project
   variables:
@@ -62,6 +64,7 @@ stages:
               - template: ./jobs/job-1-genai-networking.yaml
                 parameters:
                   serviceConnection: ${{ variables.test_service_connection }}
+                  serviceConnectionSeeding: ${{ variables.test_seeding_kv_service_connection }}
     - deployment: ESGenAI_Services
       condition: or(succeeded(), eq(variables['runNetworkingVar'], 'false'))
       dependsOn: ESGenAI_Networking
@@ -76,6 +79,7 @@ stages:
               - template: ./jobs/job-2-genai-services.yaml
                 parameters:
                   serviceConnection: ${{ variables.test_service_connection }}
+                  serviceConnectionSeeding: ${{ variables.test_seeding_kv_service_connection }}
 - stage: Prod_GenAI_Project
   displayName: Prod GenAI Project
   variables:
@@ -96,6 +100,7 @@ stages:
               - template: ./jobs/job-1-genai-networking.yaml
                 parameters:
                   serviceConnection: ${{ variables.prod_service_connection }}
+                  serviceConnectionSeeding: ${{ variables.prod_seeding_kv_service_connection }}
     - deployment: ESGenAI_Services
       condition: or(succeeded(), eq(variables['runNetworkingVar'], 'false'))
       dependsOn: ESGenAI_Networking
@@ -114,3 +119,4 @@ stages:
               - template: ./jobs/job-2-genai-services.yaml
                 parameters:
                   serviceConnection: ${{ variables.prod_service_connection }}
+                  serviceConnectionSeeding: ${{ variables.prod_seeding_kv_service_connection }}

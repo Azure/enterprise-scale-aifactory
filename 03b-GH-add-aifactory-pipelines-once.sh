@@ -18,7 +18,7 @@ use_ado_bicep=false
 # DIRECTORIES
 current_dir=$(pwd)
 aif_dir="$current_dir/aifactory"
-gha_bicep_dir="$aif_dir/esml-infra/github-actions/bicep/github-actions/"
+gha_bicep_dir="$aif_dir/esml-infra/github-actions/bicep/"
 gha_workflow_dir=".github/workflows"
 
 # Delete & Re-Create the workflow directory

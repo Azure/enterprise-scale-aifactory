@@ -16,10 +16,12 @@ env:
   admin_input_keyvault_subscription: "${{ secrets.AIFACTORY_SEEDING_KEYVAULT_SUBSCRIPTION_ID }}" # seeding keyvault, subscription id
   admin_input_keyvault_name: "${{ vars.AIFACTORY_SEEDING_KEYVAULT_NAME }}" # seeding keyvault, subscription id
   admin_input_keyvault_rg: "${{ vars.AIFACTORY_SEEDING_KEYVAULT_RG }}" #seeding keyvault, resource group
-  aifactorySuffixRG: "${{ vars.AIFACTORY_SUFFIX }}"   # <-XXX> If you have mutliple AIFactory's in different regions: Exampless: ["-001", "-002", "-003"]
+  aifactorySuffixRG: "${{ vars.AIFACTORY_SUFFIX }}"  # Max 6 characters. <company>-<aifactoryname> Examples: ["acme-ai-", "mrvel-1-", "contoso-", "ms-ai-"]
   admin_aifactoryPrefixRG: "${{ vars.AIFACTORY_PREFIX }}"  # <company>-<aifactoryname> Examples: ["acme-ai-", "mrvel-1-", "contoso-", "ms-ai-"]
   cidr_range: "${{ vars.AIFACTORY_CIDR_XX }}" # XX = "17" 
   aiResourceSuffix: "-001" # Suffix on resources within the resource group: -001, -002
+  admin_keyvaultSoftDeleteDays: "${{ vars.KEYVAULT_SOFT_DELETE}}" # 90 days is default. 0 is disabled. 90 days is recommended.
+  use_groups: "${{ vars.USE_AD_GROUPS }}" # true, use AD groups for project members & advanced Personas. false, use individual ObjectID's and simple mode Personas
 
   # CORE TEAM MEMBERS specific
   technical_admins_bastion_IP_whitelist: "${{ secrets.PROJECT_MEMBERS_IP_ADDRESS }}" # "192.x.x.x"
@@ -57,6 +59,7 @@ jobs:
             --parameters env="${{ env.dev_test_prod }}" \
             --parameters aifactorySuffixRG="${{ env.aifactorySuffixRG }}" \
             --parameters technicalAdminsObjectID="${{ env.technical_admins_ad_object_id }}" \
+            --parameters useAdGroups="${{ env.use_groups }}" \
             --parameters technicalAdminsEmail="${{ env.technical_admins_email }}"
           azcliversion: latest
       - name: 02_az_bicep_private_networking
@@ -111,5 +114,6 @@ jobs:
             --parameters IPwhiteList="${{ env.technical_admins_bastion_IP_whitelist }}" \
             --parameters inputKeyvaultSubscription="${{ env.admin_input_keyvault_subscription }}" \
             --parameters inputKeyvaultResourcegroup="${{ env.admin_input_keyvault_rg }}" \
+            --parameters keyvaultSoftDeleteDays="${{ env.admin_keyvaultSoftDeleteDays }}" \
             --parameters inputKeyvault="${{ env.admin_input_keyvault_name }}"
           azcliversion: latest

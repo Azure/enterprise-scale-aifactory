@@ -104,9 +104,6 @@ venv.bak/
 # mypy
 .mypy_cache/
 
-# AIFactory template repo
-bootstrap.properties
-
 # Azure Machine Learning
 #.azureml/
 #*ws_config.json
@@ -121,3 +118,6 @@ out/
 temp_data/
 *.csv
 *.parquet
+02_update_templates_QUICK.ipynb
+01_init_templates_ALL.ipynb
+

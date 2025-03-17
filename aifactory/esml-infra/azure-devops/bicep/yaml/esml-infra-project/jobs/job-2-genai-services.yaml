@@ -38,12 +38,13 @@ steps:
     azureSubscription: ${{ parameters.serviceConnection }}
     scriptType: bash
     scriptLocation: inlineScript
-    inlineScript: 'az keyvault network-rule add --resource-group $(admin_bicep_kv_fw_rg) --name $(admin_bicep_kv_fw) --ip-address $(admin_ip_fw)'
-
+    inlineScript: | 
+     az account set --subscription "$(admin_bicep_input_keyvault_subscription)"
+     az keyvault network-rule add --resource-group "$(admin_bicep_kv_fw_rg)" --name "$(admin_bicep_kv_fw)" --ip-address "$(admin_ip_fw)"
 - task: AzureKeyVault@2
   displayName: '03_az_download_seeding_keyvault'
   inputs:
-    azureSubscription: ${{ parameters.serviceConnection }}
+    azureSubscription: ${{ parameters.serviceConnectionSeeding }}
     KeyVaultName: '$(admin_bicep_kv_fw)'
 
 - task: AzureCLI@2
@@ -62,6 +63,7 @@ steps:
     scriptType: bash
     scriptLocation: inlineScript
     inlineScript: |
+     az account set --subscription "$(dev_test_prod_sub_id)"
      az deployment sub create \
      --name "esml-p$(project_number_000)-$(dev_test_prod)-$(admin_locationSuffix)-$(admin_prjResourceSuffix)$(admin_commonResourceSuffix)$PrjDepl" \
      --subscription "$(dev_test_prod_sub_id)" \
@@ -111,6 +113,8 @@ steps:
      --parameters serviceSettingDeployAIDocIntelligence="$(optional_serviceSettingDeployAIDocIntelligence)" \
      --parameters azureMachineLearningObjectId="$(azure_machinelearning_sp_oid)" \
      --parameters semanticSearchTier="$(admin_semanticSearchTier)" \
+     --parameters keyvaultSoftDeleteDays="$(admin_keyvaultSoftDeleteDays)" \
+     --parameters useAdGroups="$(use_ad_groups)" \
      --parameters IPwhiteList="$(project_IP_whitelist)"
     workingDirectory: '$(System.DefaultWorkingDirectory)/azure-enterprise-scale-ml/environment_setup/aifactory/bicep'
 
@@ -119,5 +123,7 @@ steps:
   inputs:
     azureSubscription: ${{ parameters.serviceConnection }}
     scriptLocation: inlineScript
-    inlineScript: 'az keyvault network-rule remove --resource-group $(admin_bicep_kv_fw_rg) --name $(admin_bicep_kv_fw) --ip-address $(admin_ip_fw)'
+    inlineScript: | 
+     az account set --subscription "$(admin_bicep_input_keyvault_subscription)"
+     az keyvault network-rule remove --resource-group "$(admin_bicep_kv_fw_rg)" --name "$(admin_bicep_kv_fw)" --ip-address "$(admin_ip_fw)"
   condition: always()

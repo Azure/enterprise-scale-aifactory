@@ -25,6 +25,8 @@ env:
     admin_hybridBenefit: false # Enable Hybrid Benefits if provisioning VM access via Bastion
     admin_commonResourceSuffix: "-001"
     admin_prjResourceSuffix: "-001"
+    admin_keyvaultSoftDeleteDays:  "${{ vars.KEYVAULT_SOFT_DELETE}}" # 90 days is default. 0 is disabled. 90 days is recommended.
+    use_groups: "${{ vars.USE_AD_GROUPS }}" # true, use AD groups for project members & advanced Personas. false, use individual ObjectID's and simple mode Personas
 
     # ADMIN specific START (only configure once)
     admin_ip_fw: "192.x.x.x" # Do not touch. leave as-is. This is just a placeholder a script will populate later.
@@ -55,15 +57,15 @@ env:
     optional_serviceSettingDeployAzureFunction: false # Deploy Azure App Service and a WebApp
     optional_serviceSettingDeployAzureContainerApps: false # Deploy Azure ContainerApps
     optional_serviceSettingDeployAzureCosmosDB: false # Deploy Azure CosmosDB
-    # OPTIONAL - ESML specific
-    admin_aks_gpu_sku_dev_override: "Standard_B4ms" # AKS GPU SKU for dev
+    # OPTIONAL - ESML specific https://learn.microsoft.com/en-us/azure/virtual-machines/ncads-h100-v5
+    admin_aks_gpu_sku_dev_override: "Standard_B4ms" # GPU train: [Standard_NC24rs_v3,Standard_ND96amsr_A100_v4] GPU Inference [Standard_NC40ads_H100_v5,Standard_NC80adis_H100_v5]. CPU["Standard_B4ms"]
     admin_aks_gpu_sku_test_prod_override: Standard_DS13-2_v2 # AKS GPU SKU for test/prod
     admin_aks_nodes_dev_override: 1 # AKS nodes for dev
     admin_aks_nodes_testProd_override: 3 # AKS nodes for test/prod
-    admin_aks_version_override: "1.30.3" # AKS version
+    admin_aks_version_override: "1.30.3" # AKS version (1.30.3 | 1.30.7: LTS in UKS, SDC, EASTUS2)
     admin_aml_cluster_maxNodes_dev_override: 3 # AML cluster max nodes for dev
     admin_aml_cluster_maxNodes_testProd_override: 5 # AML cluster max nodes for test/prod
-    admin_aml_cluster_sku_dev_override: "Standard_DS3_v2" # AML cluster SKU for dev
+    admin_aml_cluster_sku_dev_override: "Standard_DS3_v2" # "Standard_ND96amsr_A100_v4" # AML cluster SKU for dev GPU Inference [Standard_NC40ads_H100_v5,Standard_NC80adis_H100_v5]
     admin_aml_cluster_sku_testProd_override: "Standard_D13_v2" # AML cluster SKU for test/prod
     admin_aml_computeInstance_dev_sku_override: "Standard_DS11_v2" # AML compute instance SKU for dev
     admin_aml_computeInstance_testProd_sku_override: "Standard_ND96amsr_A100_v4" # AML compute instance SKU for test/prod
@@ -71,14 +73,10 @@ env:
     admin_private_DatabricksUI: false # Private Databricks UI
 jobs:
   job1-deploy-networking-project-esml:
-    name: ESML_Networking
+    name: ESML_Private_Networking
     if: ${{ vars.RUN_JOB1_NETWORKING }} == 'true'
     environment: ${{github.event.inputs.environment}}
     runs-on: ubuntu-latest
-    #defaults:
-      #run:
-        #shell: pwsh
-        #working-directory: "${{ github.workspace }}/azure-enterprise-scale-ml/environment_setup/aifactory/bicep/scripts/"
     steps:
     - name: Print Skip NETWORKING variable
       run: |
@@ -127,13 +125,16 @@ jobs:
       if: env.ENABLE_NETWORKING_JOB  != 'false'
       uses: azure/cli@v2
       with:
-        inlineScript: az keyvault network-rule add --resource-group ${{ env.admin_bicep_kv_fw_rg }} --name ${{ env.admin_bicep_kv_fw }} --ip-address ${{ env.runner_ip }}
+        inlineScript: |
+          az account set --subscription ${{ env.admin_bicep_input_keyvault_subscription }}
+          az keyvault network-rule add --resource-group ${{ env.admin_bicep_kv_fw_rg }} --name ${{ env.admin_bicep_kv_fw }} --ip-address ${{ env.runner_ip }}
         azcliversion: latest
     - name: 03_download_seeding_keyvault
       if: env.ENABLE_NETWORKING_JOB  != 'false'
       uses: azure/cli@v2
       with:
         inlineScript: |
+          az account set --subscription ${{ env.admin_bicep_input_keyvault_subscription }}
           echo "common-sp-appid-value=$(az keyvault secret show --vault-name ${{ env.admin_bicep_kv_fw }} --name ${{ env.common-sp-appid-seeding-kv-name }} --query 'value' --output tsv)" >> $GITHUB_ENV
           echo "common-sp-secret-value=$(az keyvault secret show --vault-name ${{ env.admin_bicep_kv_fw }} --name ${{ env.common-sp-secret-seeding-kv-name }} --query 'value' --output tsv)" >> $GITHUB_ENV
         azcliversion: latest
@@ -153,9 +154,9 @@ jobs:
       if: env.ENABLE_NETWORKING_JOB  != 'false'
       uses: azure/cli@v2
       with: 
-        #working-directory: "${{ github.workspace }}/azure-enterprise-scale-ml/environment_setup/aifactory/bicep/"
         inlineScript: |
           echo "Deploying subnets and NSG to subscription: ${{ env.dev_test_prod_sub_id }}"
+          az account set --subscription ${{ env.dev_test_prod_sub_id }}
           az deployment group create \
           --name "esml-p${{ env.project_number_000 }}-${{ env.dev_test_prod }}-${{ env.admin_locationSuffix }}${{ env.admin_aifactorySuffixRG }}SubnetDeplProj" \
           --subscription "${{ env.dev_test_prod_sub_id }}" \
@@ -165,15 +166,18 @@ jobs:
           --parameters @"./aifactory/parameters/10-esml-globals-1.json" \
           --parameters @"./aifactory/parameters/10-esml-globals-override.json" \
           --parameters env="${{ env.dev_test_prod }}" \
-          --parameters projectNumber="${{ env.project_number_000 }}"
-          --parameters location="$(admin_location)" \
-          --parameters locationSuffix="$(admin_locationSuffix)"
+          --parameters projectNumber="${{ env.project_number_000 }}" \
+          --parameters location="${{ env.admin_location}}" \
+          --parameters locationSuffix="${{ env.admin_locationSuffix }}" \
+          --parameters useCommonACR="${{ env.useCommonACR }}"
         azcliversion: latest
     - name: 06_az_remove_ip_from_seeding_keyvault_FW_whitelist
       if: env.ENABLE_NETWORKING_JOB  != 'false'
       uses: azure/cli@v2
       with:
-        inlineScript: az keyvault network-rule remove --resource-group ${{ env.admin_bicep_kv_fw_rg }} --name ${{ env.admin_bicep_kv_fw }} --ip-address $runner_ip
+        inlineScript: |
+          az account set --subscription ${{ env.admin_bicep_input_keyvault_subscription }}
+          az keyvault network-rule remove --resource-group ${{ env.admin_bicep_kv_fw_rg }} --name ${{ env.admin_bicep_kv_fw }} --ip-address $runner_ip
         azcliversion: latest
       #if: always()
   job2-deploy-services-project-esml:
@@ -185,9 +189,8 @@ jobs:
       defaults:
         run:
           shell: pwsh
-          #working-directory: "${{ github.workspace }}/azure-enterprise-scale-ml/environment_setup/aifactory/bicep/scripts/"
       steps:
-      - name: Print info
+      - name: Print info & Delete RBAC from earlier runs.
         run: |
           echo "The value of env.admin_private_azureMLStudioUI is: ${{ env.admin_private_azureMLStudioUI }}"
           echo "The value of env.project_number_000  is: ${{ env.project_number_000 }}"
@@ -196,6 +199,7 @@ jobs:
           echo "The value of env.useCommonACR  is: ${{ env.useCommonACR }}"
           echo "The value of env.ENABLE_NETWORKING_JOB  is: ${{ env.ENABLE_NETWORKING_JOB }}"
           echo "The value of env.admin_aks_version_override  is: ${{ env.admin_aks_version_override }}"
+          # EDIT Variables
       - name: Azure Login
         uses: azure/login@v2
         with:
@@ -217,14 +221,18 @@ jobs:
       - name: 02_az_set_ADO_ip_to_seeding_keyvault_FW_whitelist
         uses: azure/cli@v2
         with:
-          inlineScript: az keyvault network-rule add --resource-group ${{ env.admin_bicep_kv_fw_rg }} --name ${{ env.admin_bicep_kv_fw }} --ip-address $runner_ip
+          inlineScript: | 
+            az account set --subscription ${{ env.admin_bicep_input_keyvault_subscription }}
+            az keyvault network-rule add --resource-group ${{ env.admin_bicep_kv_fw_rg }} --name ${{ env.admin_bicep_kv_fw }} --ip-address $runner_ip
           azcliversion: latest
       - name: 03_az_download_seeding_keyvault
         uses: azure/cli@v2
         with:
           inlineScript: |
+            az account set --subscription ${{ env.admin_bicep_input_keyvault_subscription }}
             echo "common-sp-appid-value=$(az keyvault secret show --vault-name ${{ env.admin_bicep_kv_fw }} --name ${{ env.common-sp-appid-seeding-kv-name }} --query 'value' --output tsv)" >> $GITHUB_ENV
             echo "common-sp-secret-value=$(az keyvault secret show --vault-name ${{ env.admin_bicep_kv_fw }} --name ${{ env.common-sp-secret-seeding-kv-name }} --query 'value' --output tsv)" >> $GITHUB_ENV
+            echo "project_sp_oid_value=$(az keyvault secret show --vault-name ${{ env.admin_bicep_kv_fw }} --name ${{ env.project_service_principal_OID_seeding_kv_name }} --query 'value' --output tsv)" >> $GITHUB_ENV
           azcliversion: latest
       - name: 04_pwsh_fetch_network_parameters
         id: fetch_network_parameters
@@ -233,12 +241,66 @@ jobs:
           sudo pwsh -Command "${{ github.workspace }}/azure-enterprise-scale-ml/environment_setup/aifactory/bicep/scripts/genDynamicNetworkParamFile.ps1 -spObjId '${{env.common-sp-appid-value}}' -spSecret '${{env.common-sp-secret-value}}' -useServicePrincipal -bicepPar1 '../../../../../aifactory/parameters/10-esml-globals-1.json' -bicepPar2 '../../../../../aifactory/parameters/10-esml-globals-2-12_13_21_22.json' -bicepPar3 '../../../../../aifactory/parameters/10-esml-globals-4-13_21_22.json' -bicepPar4 '../../../../../aifactory/parameters/21-22-esml-prj-parameters.json' -filePath '../../../../../aifactory/parameters/' -env '${{env.dev_test_prod}}' -locationSuffixADO '${{env.admin_locationSuffix}}' -aifactorySuffixRGADO '${{env.admin_aifactorySuffixRG}}' -projectNumber '${{ env.project_number_000 }}' -subscriptionId '${{env.dev_test_prod_sub_id}}' -bicepPar5 '../../../../../aifactory/parameters/10-esml-globals-override.json' -commonRGNamePrefixVar '${{ env.admin_aifactoryPrefixRG }}' -projectTypeADO '${{env.admin_projectType}}'"
         continue-on-error: false
         shell: pwsh
+      - name: 05a_pwsh_remove_previous_run_rbac_in_prj_and_cmn_rg
+        if: false
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          pwsh -Command '$technical_admins_ad_object_id = "${{ env.technical_admins_ad_object_id }}"
+            $project_spoid = "${{ env.project_sp_oid_value }}"
+            $oids = $technical_admins_ad_object_id -split "\s*,\s*"
+            $sub_id = "${{ env.dev_test_prod_sub_id }}"
+            Set-AzContext $sub_id
+            
+            # Define the list of MI IDs
+            $managedIdentities = @(
+                "", # AML 1 OID MI
+                "", # AML 2 OID MI
+            )
+          
+            ####### END - EDIT VARIABLES####
+          
+            # Scopes
+            $scopeCommon = "/subscriptions/$subscriptionId/resourceGroups/$resourceGroupNameCommon"
+            $rolesCommmonRG = @(
+                "8311e382-0749-4cb8-b61a-304f252e45ec" # "AcrPush"
+            )
+          
+            $scopeProjectResourceGroup = "/subscriptions/$subscriptionId/resourceGroups/$resourceGroupName"
+            $rolesProjectRG = @(
+                "b24988ac-6180-42a0-ab88-20f7382dd24c", # "Contributor"
+                "8311e382-0749-4cb8-b61a-304f252e45ec", # "AcrPush"
+                "f58310d9-a9f6-439a-9e8d-f62e7b41a168", #"Role Based Access Control Administrator"
+                "1c0163c0-47e6-4577-8991-ea5c82e286e4" #"Virtual Machine Administrator Login"
+            )
+          
+            Write-Host "Deleting roles on resource group $scopeProjectResourceGroup"
+            Write-Host ""
+          
+            # PROJECT RG - USERS
+            foreach ($oid in $oids) {
+                foreach ($role in $rolesProjectRG) {
+                    az role assignment delete --assignee $oid --role $role --scope $scopeProjectResourceGroup
+                }
+            }
+            Write-Host "Deleting roles on project resource group for project specific service principle"
+            az role assignment delete --assignee $project_spoid --role $role --scope $scopeProjectResourceGroup
+          
+            Write-Host "Deleting roles on resource group $resourceGroupNameCommon"
+            Write-Host ""
+            # COMMON - USERS
+            foreach ($oid in $oids) {
+                foreach ($role in $rolesCommmonRG) {
+                    az role assignment delete --assignee $oid --role $role --scope $scopeCommon
+                }
+            }'
       - name: 05_az_bicep_deploy_esml_project
         if: steps.fetch_network_parameters.outcome == 'success'
         uses: azure/cli@v2
         with:
           #working-directory: "${{ github.workspace }}/azure-enterprise-scale-ml/environment_setup/aifactory/bicep/"
           inlineScript: |
+            az account set --subscription ${{ env.dev_test_prod_sub_id }}
             az deployment sub create \
             --name "esml-p${{ env.project_number_000 }}-${{ env.dev_test_prod }}-${{ env.admin_locationSuffix }}-${{ env.admin_prjResourceSuffix }}${{ env.admin_commonResourceSuffix }}$PrjDepl" \
             --subscription "${{ env.dev_test_prod_sub_id }}" \
@@ -280,11 +342,16 @@ jobs:
             --parameters aml_cluster_dev_nodes_override="${{ env.admin_aml_cluster_maxNodes_dev_override }}" \
             --parameters aml_ci_dev_sku_override="${{ env.admin_aml_computeInstance_dev_sku_override }}" \
             --parameters aml_ci_test_prod_sku_override="${{ env.admin_aml_computeInstance_testProd_sku_override }}" \
-            --parameters IPwhiteList="${{ env.project_IP_whitelist }}"
+            --parameters IPwhiteList="${{ env.project_IP_whitelist }}" \
+            --parameters keyvaultSoftDeleteDays="${{ env.admin_keyvaultSoftDeleteDays }}" \
+            --parameters useAdGroups="${{ env.use_groups }}" \
+            --parameters useCommonACR="${{ env.useCommonACR }}"
           azcliversion: latest
       - name: 06_az_remove_ip_from_seeding_keyvault_FW_whitelist
         uses: azure/cli@v2
         with:
-          inlineScript: az keyvault network-rule remove --resource-group ${{ env.admin_bicep_kv_fw_rg }} --name ${{ env.admin_bicep_kv_fw }} --ip-address $runner_ip
+          inlineScript: | 
+            az account set --subscription ${{ env.admin_bicep_input_keyvault_subscription }}
+            az keyvault network-rule remove --resource-group ${{ env.admin_bicep_kv_fw_rg }} --name ${{ env.admin_bicep_kv_fw }} --ip-address $runner_ip
           azcliversion: latest
         if: always()
