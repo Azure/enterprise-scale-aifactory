@@ -53,6 +53,10 @@ create_or_update_secret() {
   fi
 }
 
+# Prompt user for orchestrator choice
+echo -e "${YELLOW}Do you want to use overwrite AZURE_CREDENTIALS with dummy value? Usually only the 1st time this is needed, to create the variable in Github (Enter 'y' or 'n')${NC}"
+read -p "overwrite_azure_credential: " overwrite_azure_credential
+
 echo -e "${YELLOW}Bootstraps config from .env as Github environment variables and secrets. ${NC}"
 
 # Get the GitHub CLI version
@@ -61,7 +65,6 @@ gh_version=$(gh --version | grep -oP '\d+\.\d+\.\d+' | head -n 1)
 # Define environments
 environments=("dev" "stage" "prod")
 
-# Create environments
 gh api --method PUT -H "Accept: application/vnd.github+json" repos/$GITHUB_NEW_REPO/environments/dev
 create_or_update_variable "dev" "AZURE_ENV_NAME" "dev"
 
@@ -111,7 +114,7 @@ for env in "${environments[@]}"; do
     create_or_update_variable $env "PROJECT_SERVICE_PRINCIPAL_KV_S_NAME_APPID" "$PROJECT_SERVICE_PRINCIPAL_KV_S_NAME_APPID"
     create_or_update_variable $env "PROJECT_SERVICE_PRINCIPAL_KV_S_NAME_OID" "$PROJECT_SERVICE_PRINCIPAL_KV_S_NAME_OID"
     create_or_update_variable $env "PROJECT_SERVICE_PRINCIPAL_KV_S_NAME_S" "$PROJECT_SERVICE_PRINCIPAL_KV_S_NAME_S"
-    
+
     # Misc
     create_or_update_variable $env "RUN_JOB1_NETWORKING" "true"
 
@@ -124,29 +127,34 @@ for env in "${environments[@]}"; do
 done
 
 # DEV variables
-gh api --method PUT -H "Accept: application/vnd.github+json" repos/$GITHUB_NEW_REPO/environments/dev
 create_or_update_variable "dev" "AZURE_LOCATION" "$AIFACTORY_LOCATION"
 create_or_update_variable "dev" "AZURE_SUBSCRIPTION_ID" "$DEV_SUBSCRIPTION_ID"
 create_or_update_variable "dev" "AIFACTORY_CIDR_XX" "$DEV_CIDR_RANGE"
 create_or_update_variable "dev" "GH_CLI_VERSION" "$gh_version"
 
 # DEV: Secrets
-#create_or_update_secret "dev" "AZURE_CREDENTIALS" "replace_with_dev_sp_credencials"
+#create_or_update_secret "dev" "AZURE_SUBSCRIPTION_ID" "$DEV_SUBSCRIPTION_ID"
+if [[ "$overwrite_azure_credential" == "y" ]]; then
+  create_or_update_secret "dev" "AZURE_CREDENTIALS" "replace_with_dev_sp_credentials"
+fi
 
 # STAGE variables
-gh api --method PUT -H "Accept: application/vnd.github+json" repos/$GITHUB_NEW_REPO/environments/stage
 create_or_update_variable "stage" "AZURE_LOCATION" "$AIFACTORY_LOCATION"
 create_or_update_variable "stage" "AZURE_SUBSCRIPTION_ID" "$STAGE_SUBSCRIPTION_ID"
 create_or_update_variable "stage" "AIFACTORY_CIDR_XX" "$STAGE_CIDR_RANGE"
 
 # STAGE: Secrets
-#create_or_update_secret "stage" "AZURE_CREDENTIALS" "replace_with_stage_sp_credencials"
-
+#create_or_update_secret "stage" "AZURE_SUBSCRIPTION_ID" "$STAGE_SUBSCRIPTION_ID"
+if [[ "$overwrite_azure_credential" == "y" ]]; then
+  create_or_update_secret "stage" "AZURE_CREDENTIALS" "replace_with_stage_sp_credentials"
+fi
 # PROD variables
-gh api --method PUT -H "Accept: application/vnd.github+json" repos/$GITHUB_NEW_REPO/environments/prod
 create_or_update_variable "prod" "AZURE_LOCATION" "$AIFACTORY_LOCATION"
 create_or_update_variable "prod" "AZURE_SUBSCRIPTION_ID" "$PROD_SUBSCRIPTION_ID"
 create_or_update_variable "prod" "AIFACTORY_CIDR_XX" "$PROD_CIDR_RANGE"
 
 # PROD: Secrets
-#create_or_update_secret "prod" "AZURE_CREDENTIALS" "replace_with_prod_sp_credencials"
+#create_or_update_secret "prod" "AZURE_SUBSCRIPTION_ID" "$PROD_SUBSCRIPTION_ID"
+if [[ "$overwrite_azure_credential" == "y" ]]; then
+  create_or_update_secret "prod" "AZURE_CREDENTIALS" "replace_with_prod_sp_credentials"
+fi
