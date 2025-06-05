@@ -3,9 +3,11 @@
 ![Header](documentation/images/header.png)
 
 Welcome to the official *Enterprise Scale AIFactory* solution accelerator template. <br>
-This is a template repository, bootstrapped with the *Enterprise Scale AIFactory submodule* (the most common way of leveraging the AIFactory template acceleration)
+This is a template repository, bootstrapped with the *Enterprise Scale AIFactory submodule* (the most common way of leveraging the AIFactory template acceleration)<br>
 
-This repo will leverages resources/templates from the [`Enterprise Scale AI Factory submodule`](https://github.>com/jostrm/azure-enterprise-scale-ml/) including templats for `IaC AI landingzones, DataOps, MLOps, 
+This is a enteprise scale solution for deploying AI Foundry with related services to create End-2-End agentic scenarios, into multiple isolated environments (Dev,Stage,Prod) with private networking in Azure. You may optionally add/remove services such as Azure Machine learning, Bing or other services. The deployed features follow [Microsoft's Well-Architected Framework](https://learn.microsoft.com/en-us/azure/well-architected/ai/personas) to establish an isolated infrastructure intended to assist in moving from a Proof of Concept state to a production-ready application. It also includes templates for DataOps, MLOps and GenAIOps, compatible with the secure infra setup.
+
+This repo will leverages resources/templates from the [`Enterprise Scale AI Factory submodule`](https://github.com/jostrm/azure-enterprise-scale-ml/) including templats for `IaC AI landingzones, DataOps, MLOps, 
 GenAIOps`.
 
 The mirror repo based on this repo, will act as your repo with options as: [Github private, internal, public repo](https://resources.github.com/learn/pathways/administration-governance/essentials/manage-your-repository-visibility-rules-and-settings/), or a [private or public Azure Devops repository](https://learn.microsoft.com/en-us/azure/devops/organizations/projects/make-project-public?view=azure-devops)
@@ -14,6 +16,26 @@ The mirror repo based on this repo, will act as your repo with options as: [Gith
 >Since the mirror repo will become your repo (or see BYORepo option), you will not have any failure with tokens/cross-authentication.
 >
 
+> [!NOTE]
+> Since *Well-architected Framework* does not recommend using the Azure Developer CLI (`AZD`) for production purposes (or other dev/preview technology such as Azure Verified Module(`AVM`), we removed those, to only use GA `Azure CLI` with orchestrator pipelines in `Github Actions`or `Azure Devops pipelines`.
+> Also both a Managed Identity and Service principal is created for your team, to be able to automate the full **GenAIOps process** (via the GenAIOps template)
+
+The *AI Factory project* of type *GenAI* has a baseline or the services: **AI Foundry, AI Services, AI Search** + 2 Storage accounts, Keyvault, Monitoring, Dashboards, Private networking - optionally hybrid mode with public user access. <br>
+Via *AI Factory feature flags* you can add optional services, re-run the Github action workflow (or Azure Devops pipeline) - to incrementally build your solution (e.g start without front-end in PoC). 
+
+The services that can be added on top of the **BASELINE** can be seen in the image below: 
+- **AI related**: Azure OpenAI (standalone), Azure Machine Learning, Bing Grounding, AI Search (on/off), Azure Speech, Azure Vision
+- **Front end/Backend hosting**: Azure ContainerApps, Azure Webapp/function, AKS
+- **Data & Databases**: Azure Cosmos DB, MongoDB, Azure SQL Database, PostgreSQL Flexible server, Azure cache for Redis
+- **Integration & ELT/ETL/Streaming**: Azure Datafactory, Databricks, EventHubs, APIM - AI Gateway Hub(integration & IaC), Microsoft Onelake (integration: Snowflake, S3, etc)
+
+![](./documentation/images/aifactory-project-types.png)
+
+[How-to SETUP AI Factory](./documentation/bootstrapping.md)<br>
+[How-to UPDATE AI Factory](https://github.com/jostrm/azure-enterprise-scale-ml/blob/main/documentation/v2/20-29/26-update-AIFactory.md)<br>
+<details>
+  <summary><b>The purpose of this repo</b></summary>
+
 ## The purpose of this repo
 This repo, is purposed to bootstrap a repository, that automatically links to the centralized (readonly)submodule `azure-enterprise-scale-ml`, and provides you with templates for YOUR variables, to customize your AI Factory, besides the basic [.env.template](./.env.template) parameters that will end up as Variables in your Github/Azure Devops.
 
@@ -21,77 +43,72 @@ It also provides an automation script to copy templates IaC automation variables
 
 ## Simple mode VS Advanced mode
 This repo is the *simple mode* to setup an AIFactory. This contains automation to:
-- Automate the [full manual AIFactory setup process seen here](https://github.com/jostrm/azure-enterprise-scale-ml/blob/main/documentation/v2/10-19/13-setup-aifactory.md). Estimated time effort for manual setup is 2h, and is reduced to 10min with this repo.
-- Set default vaules for all 30 [AIFactory based parameters seen here](https://github.com/jostrm/azure-enterprise-scale-ml/blob/main/documentation/v2/10-19/13-parameters-ado.md), saving you estimated time effort of 1h.
-
-The ESML AIFactory with manual seup is said to accelerate setup from 500-1500h down to ~4h setup time.<br>
-This repo accelerates even further, below 1h, since leaving only a hand-full of variables to setup in [.env.template](./.env.template)
--> Making it a good choice to quickly setup infrastructure securely for AI-hackathons, workshops, education - scenarios where you are OK if naming convention does not comply 100% with your organizations choices, and you don't need to peer it to your Hub - e.g. where `AIFAcotry standalone mode` is OK.
+- Automate the [full manual AIFactory setup process seen here](https://github.com/jostrm/azure-enterprise-scale-ml/blob/main/documentation/v2/10-19/13-setup-aifactory.md). Estimated time effort for manual setup is 10min with this repo.
+- Using default vaules for all ~30 [AIFactory based parameters seen here](https://github.com/jostrm/azure-enterprise-scale-ml/blob/main/documentation/v2/10-19/13-parameters-ado.md), saving you estimated time effort of 1h.
+- Making it a good choice to quickly setup infrastructure securely for 
+        - AI-hackathons, workshops, education, scenarios where you are OK if naming convention does not comply 100% with your organizations choices, and you don't need to peer it to your Hub - e.g. where `AIFAcotry standalone mode` is OK.
+        - Or configre all paramaters "advanced mode" to get an: Enterprise grade platofrm with Dev, Stage, Prod enviroments.
 
 > [!NOTE]
 > You can still go into *advanced mode*, and edit all parameters. You will find them here in the [aifactory/parameters](./aifactory/parameters) folder.
 >
 
+</details>
+
 > [!IMPORTANT]
 >This repo provides a ready-to-run github repo, bootstrapped and connected to the *Enterprise Scale AI Factory Github submodule*. For full documentation visit the documentation section [`Enterprise Scale AI Factory submodule`](https://github.com/jostrm/azure-enterprise-scale-ml/blob/main/documentation/readme.md)
 >
 
-## Setup options - GITHUB
-As a mirror-repo (Github) or "Bring your own repo" (Github or Azure Devops) <br>
+## Setup options - Github & Azure Devops as orchestrators
+Setup as a mirror-repo (Github) or "Bring your own repo" (Github or Azure Devops).
 
-After you have copied the  [.env.template](./.env.template) as your [.env](./.env) file, you have the options below.
+<details>
+  <summary><b>Github - Mirror repo</b></summary>
 
-- A) Bootstrap as a mirror-repo in Github, it becomes a private, internal or public Github repo
-    - **When to choose**: If you are allowed to create own repos, and Gihub is your preffered choice.
-    - **Automation scripts to run**:  [Bootstrapping a new AIFactory](documentation/bootstrapping.md), or do quickstart: 
-    - **Quickstart:**
-        - 1) [01a-GH-mirror-repo-from-template-once.sh](./01a-GH-mirror-repo-from-template-once.sh)
-        - 2) VS code open up a new Window with your new repo - Rename `.env.template` to `.env` and edit it. 
-            - Edit the PARAMETER folder also. 
-        - 3) Go to Github.com to your repo, and edit the secret: `AZURE_CREDENTIALS` - it should be formatted as follows:
-               ```json
-                {
-                    "clientId": "your-client-id-aka-appId",
-                    "clientSecret": "your-client-secret-aka-servicPrincipalSecret",
-                    "subscriptionId": "your-subscription-id",
-                    "tenantId": "your-tenant-id"
-                }
-                ```
-        - 4) Run at least 2 Github Actions workflows at Github.com | or: [04ab-setup-infra-aifactory.sh](./04ab-setup-infra-aifactory.sh)
-            - infra-common.yaml
-            - infra-project-genai.yaml
-- B) Bring your own "empty" repo 
-    - **When to choose**: If your organization don't allow you to create repos, or if you preffer Azure Devops.
-    - **Automation scripts to run**: See full instructions here:  [Bootstrapping a new AIFactory](documentation/bootstrapping.md)
+Bootstrap as a mirror-repo in Github, it becomes a private, internal or public Github repo
+- **When to choose**: If you are allowed to create own repos, and Gihub is your preffered choice.
+- **Automation scripts to run**:  [Bootstrapping a new AIFactory](documentation/bootstrapping.md), or do quickstart: 
+- **Quickstart:**
+    - 1) [01a-GH-mirror-repo-from-template-once.sh](./01a-GH-mirror-repo-from-template-once.sh)
+    - 2) VS code open up a new Window with your new repo - Rename `.env.template` to `.env` and edit it. 
+        - Edit the PARAMETER folder also. 
+    - 3) Go to Github.com to your repo, and edit the secret: `AZURE_CREDENTIALS` - it should be formatted as follows:
+            ```json
+            {
+                "clientId": "your-client-id-aka-appId",
+                "clientSecret": "your-client-secret-aka-servicPrincipalSecret",
+                "subscriptionId": "your-subscription-id",
+                "tenantId": "your-tenant-id"
+            }
+            ```
+    - 4) Run at least 2 Github Actions workflows at Github.com | or: [04ab-setup-infra-aifactory.sh](./04ab-setup-infra-aifactory.sh)
+        - infra-common.yaml
+        - infra-project-genai.yaml
+
+</details>
+<details>
+  <summary><b>Github/Axure Deveop - Bring your own repo</b></summary>
+
+- **When to choose**: If your organization don't allow you to create repos, or if you preffer Azure Devops.
+- **Automation scripts to run**: See full instructions here:  [Bootstrapping a new AIFactory](documentation/bootstrapping.md)
 
 ## Setup options - Azure Devops
-As of now, only the `advanced mode` is possible. Using either `.yaml` or `classic`. Bootstrap for this is work in progress.
+As of now, only the `advanced mode` is possible, and `.yaml`:
 Please visit the full documentation for here. [Enterprise Scale AI Factory - Setup](https://github.com/jostrm/azure-enterprise-scale-ml/blob/main/documentation/v2/20-29/24-end-2-end-setup.md)
 
 > [!NOTE]
 >   
-> The steps A nd B above will create pipelines in Azure Devops or Github (as GHA workflowws), and the pipelines will setup the AIFactory and AI Factory projects. Before you start you will need configure your [.env](./.env) environment variables. Read more at [bootstrapping.md](./documentation/bootstrapping.md) section.
+> The setup will create pipelines in Azure Devops or Github (as GHA workflowws), and the pipelines will setup the AIFactory and AI Factory projects. Before you start you will need configure your [.env](./.env) environment variables. Read more at [bootstrapping.md](./documentation/bootstrapping.md) section.
 >
 
-## How to create more projects of different types? 
-As explained in previous section you will end up with automation pipelines, in either your own Azure Devops (as Release pipelines) or your own Github repositorys (as Actions/Workflows).
-
-The pipelines, can be executed multiple times, to provision multiple AIFactory projects. 
-You only need to change a few parameters in the .env file, and run [02b-GH-create-or-update-github-variables.sh](./02b-GH-create-or-update-github-variables.sh) - values such as below:
-```python
-
-PROJECT_NUMBER="001" # <XXX> unique string per aifactory, usually 001,002,003
-PROJECT_MEMBERS="qwer123-qwer-wrfe-23fd-asdfqewrt,asdfg-qwer-asdf-23fd-asdf1234" #[GH-Secret] ObjectID in a commas separated list, without space
-PROJECT_TYPE="genai-1" # What project type to deploy? [esml,genai-1,genai-2]
-
-```
-
+</details>
 
 For full documentation, please visit [`Enterprise Scale AI Factory documentation`](https://github.com/jostrm/azure-enterprise-scale-ml/blob/main/documentation/readme.md)
+
 ## Feature Highlights
 
 - Bootstrap your project in under an hour, including enterprise grade security
-- Enteprise grade security and networking (private link).
+- Enterprise grade security and networking (private / WAF).
 - Provision resources with IaC (BICEP)
 - Automate IaC with (Github Actions or Azure Devops)
 - Easy-to-configure and extend templates: DataOps, MLOps, GenAIOps
@@ -118,12 +135,6 @@ For full documentation, please visit [`Enterprise Scale AI Factory documentation
 >
 
 [Full documentation -  "Enterprise Scale AI Factory"](https://github.com/jostrm/azure-enterprise-scale-ml/blob/main/documentation/readme.md)
-
-## How-to
-
-1. [Bootstrapping a new AIFactory](documentation/bootstrapping.md)
-2. [Bootstrapping a new AIFactory project (Type: genai-1 or ESML)](documentation/bootstrapping.md)
-3. [Delivering a new Feature: CI/CD with MLOps or GenAIOps](documentation/delivering_new_feature.md)
 
 ## Contributing
 
