@@ -181,6 +181,7 @@ echo -e "${GREEN}Everything up-to-date${NC}"
 cd ..
 rm -rf $github_template_repo_name.git # rm -rf $template_project_repo_name.git
 
+
 # Function to check if a variable exists
 check_variable_exists() {
   gh api repos/$GITHUB_NEW_REPO/environments/$1/variables/$2 > /dev/null 2>&1
@@ -191,6 +192,13 @@ create_or_update_variable() {
   local env=$1
   local name=$2
   local value=$3
+  # Check if the value is empty
+  if [[ -z "$value" ]]; then
+    # #echo -e "${RED}Error: Variable '$name' for environment '$env' has an empty value. Skipping.${NC}"
+    echo -e "${YELLOW}Skipping variable '$name' for environment '$env' because the value is empty.${NC}"
+    return
+  fi
+
   if check_variable_exists $env $name; then
     gh api --method PATCH -H "Accept: application/vnd.github+json" repos/$GITHUB_NEW_REPO/environments/$env/variables/$name -f value="$value"
   else
@@ -215,6 +223,10 @@ create_or_update_secret() {
   fi
 }
 
+# Prompt user for orchestrator choice
+echo -e "${YELLOW}Do you want to overwrite AZURE_CREDENTIALS with dummy value? Usually only the 1st time this is needed, to create the variable in Github (Enter 'y' or 'n')${NC}"
+read -p "overwrite_azure_credential: " overwrite_azure_credential
+
 echo -e "${YELLOW}Bootstraps config from .env as Github environment variables and secrets. ${NC}"
 
 # Get the GitHub CLI version
@@ -223,7 +235,6 @@ gh_version=$(gh --version | grep -oP '\d+\.\d+\.\d+' | head -n 1)
 # Define environments
 environments=("dev" "stage" "prod")
 
-# Create environments
 gh api --method PUT -H "Accept: application/vnd.github+json" repos/$GITHUB_NEW_REPO/environments/dev
 create_or_update_variable "dev" "AZURE_ENV_NAME" "dev"
 
@@ -244,6 +255,7 @@ for env in "${environments[@]}"; do
     create_or_update_variable $env "AIFACTORY_PREFIX" "$AIFACTORY_PREFIX"
     create_or_update_variable $env "TENANT_AZUREML_OID" "$TENANT_AZUREML_OID"
     create_or_update_variable $env "LAKE_PREFIX" "$LAKE_PREFIX"
+    create_or_update_variable $env "AISEARCH_SEMANTIC_TIER" "$AISEARCH_SEMANTIC_TIER"
 
     #RBAC model
     create_or_update_variable $env "USE_AD_GROUPS" "$USE_AD_GROUPS"
@@ -273,9 +285,9 @@ for env in "${environments[@]}"; do
     create_or_update_variable $env "PROJECT_SERVICE_PRINCIPAL_KV_S_NAME_APPID" "$PROJECT_SERVICE_PRINCIPAL_KV_S_NAME_APPID"
     create_or_update_variable $env "PROJECT_SERVICE_PRINCIPAL_KV_S_NAME_OID" "$PROJECT_SERVICE_PRINCIPAL_KV_S_NAME_OID"
     create_or_update_variable $env "PROJECT_SERVICE_PRINCIPAL_KV_S_NAME_S" "$PROJECT_SERVICE_PRINCIPAL_KV_S_NAME_S"
-    
+
     # Misc
-    create_or_update_variable $env "RUN_JOB1_NETWORKING" "true"
+    create_or_update_variable $env "RUN_JOB1_NETWORKING" "$RUN_JOB1_NETWORKING"
 
     # Global: Secrets
     create_or_update_secret $env "AIFACTORY_SEEDING_KEYVAULT_SUBSCRIPTION_ID" "$AIFACTORY_SEEDING_KEYVAULT_SUBSCRIPTION_ID"
@@ -283,34 +295,51 @@ for env in "${environments[@]}"; do
     # Project Specifics (1st project bootstrap): 
     create_or_update_secret $env "PROJECT_MEMBERS" "$PROJECT_MEMBERS"
     create_or_update_secret $env "PROJECT_MEMBERS_IP_ADDRESS" "$PROJECT_MEMBERS_IP_ADDRESS"
-
     create_or_update_secret $env "TENANT_ID" "$TENANT_ID"
+    # Variables: 
+    create_or_update_variable $env "BYO_SUBNETS" "$BYO_SUBNETS"
+    create_or_update_variable $env "AIFACTORY_VERSION_MAJOR" "$AIFACTORY_VERSION_MAJOR"
+    create_or_update_variable $env "AIFACTORY_VERSION_MINOR" "$AIFACTORY_VERSION_MINOR"
+    create_or_update_variable $env "AIFACTORY_SALT" "$AIFACTORY_SALT"
+    create_or_update_variable $env "AIFACTORY_SALT_RANDOM" "$AIFACTORY_SALT_RANDOM"
 done
 
 # DEV variables
 create_or_update_variable "dev" "AZURE_LOCATION" "$AIFACTORY_LOCATION"
 create_or_update_variable "dev" "AZURE_SUBSCRIPTION_ID" "$DEV_SUBSCRIPTION_ID"
 create_or_update_variable "dev" "AIFACTORY_CIDR_XX" "$DEV_CIDR_RANGE"
+create_or_update_variable "dev" "NETWORK_ENV" "$DEV_NETWORK_ENV"
+
 create_or_update_variable "dev" "GH_CLI_VERSION" "$gh_version"
 
 # DEV: Secrets
-create_or_update_secret "dev" "AZURE_CREDENTIALS" "replace_with_dev_sp_credentials"
+#create_or_update_secret "dev" "AZURE_SUBSCRIPTION_ID" "$DEV_SUBSCRIPTION_ID"
+if [[ "$overwrite_azure_credential" == "y" ]]; then
+  create_or_update_secret "dev" "AZURE_CREDENTIALS" "replace_with_dev_sp_credentials"
+fi
 
 # STAGE variables
 create_or_update_variable "stage" "AZURE_LOCATION" "$AIFACTORY_LOCATION"
-create_or_update_variable "stage" "AZURE_SUBSCRIPTION_ID" "$STAGE_SUBSCRIPTION_ID" 
+create_or_update_variable "stage" "AZURE_SUBSCRIPTION_ID" "$STAGE_SUBSCRIPTION_ID"
 create_or_update_variable "stage" "AIFACTORY_CIDR_XX" "$STAGE_CIDR_RANGE"
+create_or_update_variable "stage" "NETWORK_ENV" "$STAGE_NETWORK_ENV"
 
 # STAGE: Secrets
-create_or_update_secret "stage" "AZURE_CREDENTIALS" "replace_with_stage_sp_credentials"
-
+#create_or_update_secret "stage" "AZURE_SUBSCRIPTION_ID" "$STAGE_SUBSCRIPTION_ID"
+if [[ "$overwrite_azure_credential" == "y" ]]; then
+  create_or_update_secret "stage" "AZURE_CREDENTIALS" "replace_with_stage_sp_credentials"
+fi
 # PROD variables
 create_or_update_variable "prod" "AZURE_LOCATION" "$AIFACTORY_LOCATION"
 create_or_update_variable "prod" "AZURE_SUBSCRIPTION_ID" "$PROD_SUBSCRIPTION_ID"
 create_or_update_variable "prod" "AIFACTORY_CIDR_XX" "$PROD_CIDR_RANGE"
+create_or_update_variable "dev" "NETWORK_ENV" "$PROD_NETWORK_ENV"
 
 # PROD: Secrets
-create_or_update_secret "prod" "AZURE_CREDENTIALS" "replace_with_prod_sp_credentials"
+#create_or_update_secret "prod" "AZURE_SUBSCRIPTION_ID" "$PROD_SUBSCRIPTION_ID"
+if [[ "$overwrite_azure_credential" == "y" ]]; then
+  create_or_update_secret "prod" "AZURE_CREDENTIALS" "replace_with_prod_sp_credentials"
+fi
 
 # TODO Future: dev.env / stage.env / prod.env
 # gh secret set -f prod.env --env prod

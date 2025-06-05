@@ -54,12 +54,16 @@ submodule_path="azure-enterprise-scale-ml"  # Replace with the actual path to yo
 copy_notebooks=false
 init_parameters=true
 init_esml_util=true
+
+0) Add the submodule to your repo (to get the bootstrap files)
+
 ################### VARIABLES ###################
 try
 (   # open a subshell !!!
     
     if ! submodule_exists "$submodule_name"; then
         git submodule add https://github.com/jostrm/azure-enterprise-scale-ml || throw $AlreadyInIndex
+        git submodule foreach 'git checkout "release/v1.20" && git pull origin "release/v1.20"'
     else
         echo "Submodule $submodule_name already exists"
         if submodule_initialized "$submodule_path" && submodule_on_main "$submodule_path"; then
@@ -68,7 +72,7 @@ try
             echo "Updating submodule and checking out main branch"
             git submodule update --init --recursive
             #git submodule foreach 'git checkout main'
-            git submodule foreach 'git checkout main || git checkout -b main origin/main'
+            git submodule foreach 'git checkout "release/v1.20" && git pull origin "release/v1.20"'
         fi
     fi
     
