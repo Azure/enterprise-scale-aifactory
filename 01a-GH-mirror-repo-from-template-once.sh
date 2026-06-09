@@ -181,16 +181,46 @@ echo -e "${GREEN}Everything up-to-date${NC}"
 cd ..
 rm -rf $github_template_repo_name.git # rm -rf $template_project_repo_name.git
 
-# Function to check if a variable exists
+# ============================================================================
+# Variable & Secret Bootstrap
+# (kept in sync with 10-GH-create-or-update-github-variables.sh)
+# - Repo-level variables: applied ONCE at repo scope to reduce per-env count
+#   (GitHub limits the number of variables per environment).
+# - Environment-level: only env-specific variables and secrets.
+# This script is a ONE-TIME bootstrap, so it always targets all 3 environments
+# (dev/stage/prod) and always seeds the AZURE_CREDENTIALS placeholder.
+# ============================================================================
+
+# Rate limit safety: pause to avoid GitHub secondary rate limits
+op_counter=0
+rate_limit_pause_after=50
+rate_limit_pause_after_2=85
+rate_limit_sleep_seconds=30
+
+increment_counter() {
+  op_counter=$((op_counter + 1))
+  echo -e "${YELLOW}[${op_counter}] Processing: $1${NC}"
+  if [[ $op_counter -eq $rate_limit_pause_after || $op_counter -eq $rate_limit_pause_after_2 ]]; then
+    echo -e "${YELLOW}Hit ${op_counter} operations. Sleeping ${rate_limit_sleep_seconds}s to avoid GitHub secondary rate limits...${NC}"
+    sleep "$rate_limit_sleep_seconds"
+  fi
+}
+
+# Function to check if an env-level variable exists
 check_variable_exists() {
   gh api repos/$GITHUB_NEW_REPO/environments/$1/variables/$2 > /dev/null 2>&1
 }
 
-# Function to create or update a variable
+# Function to create or update an env-level variable
 create_or_update_variable() {
   local env=$1
   local name=$2
   local value=$3
+  if [[ -z "$value" ]]; then
+    echo -e "${YELLOW}Skipping variable '$name' for environment '$env' because the value is empty.${NC}"
+    return
+  fi
+  increment_counter "variable $env/$name"
   if check_variable_exists $env $name; then
     gh api --method PATCH -H "Accept: application/vnd.github+json" repos/$GITHUB_NEW_REPO/environments/$env/variables/$name -f value="$value"
   else
@@ -208,108 +238,343 @@ create_or_update_secret() {
   local env=$1
   local name=$2
   local value=$3
-  if check_secret_exists $env $name; then
-    gh secret set $name --repo $GITHUB_NEW_REPO --env $env --body "$value"
-  else
-    gh secret set $name --repo $GITHUB_NEW_REPO --env $env --body "$value"
-  fi
+  increment_counter "secret $env/$name"
+  gh secret set $name --repo $GITHUB_NEW_REPO --env $env --body "$value"
 }
 
-echo -e "${YELLOW}Bootstraps config from .env as Github environment variables and secrets. ${NC}"
+# Repo-level variable helper
+create_or_update_repo_variable() {
+  local name=$1
+  local value=$2
+  if [[ -z "$value" ]]; then
+    echo -e "${YELLOW}Skipping repo variable '$name' because the value is empty.${NC}"
+    return
+  fi
+  echo -e "${YELLOW}[Repo] Setting variable: $name${NC}"
+  gh variable set "$name" --repo "$GITHUB_NEW_REPO" --body "$value"
+}
+
+echo -e "${YELLOW}Bootstraps config from .env as Github repo/environment variables and secrets.${NC}"
 
 # Get the GitHub CLI version
 gh_version=$(gh --version | grep -oP '\d+\.\d+\.\d+' | head -n 1)
 
-# Define environments
+# Helper to get AZURE_ENV_NAME per environment
+get_azure_env_name() {
+  case "$1" in
+    dev) echo "dev" ;;
+    stage) echo "test" ;;
+    prod) echo "prod" ;;
+  esac
+}
+
+# All environments are bootstrapped on first-time setup
 environments=("dev" "stage" "prod")
 
-# Create environments
-gh api --method PUT -H "Accept: application/vnd.github+json" repos/$GITHUB_NEW_REPO/environments/dev
-create_or_update_variable "dev" "AZURE_ENV_NAME" "dev"
+# ----------------------------------------------------------------------------
+# Repo-scoped variables (replaces majority of per-env variables to stay
+# under GitHub's per-environment variable limit). Mirrors repo_level_vars
+# in 10-GH-create-or-update-github-variables.sh.
+# ----------------------------------------------------------------------------
+repo_level_vars=(
+  # === Global AI Factory settings ===
+  "AIFACTORY_LOCATION"
+  "AIFACTORY_LOCATION_SHORT"
+  "AIFACTORY_SUFFIX"
+  "AIFACTORY_PREFIX"
+  "TENANT_AZUREML_OID"
+  "LAKE_PREFIX"
+  "AISEARCH_SEMANTIC_TIER"
 
-gh api --method PUT -H "Accept: application/vnd.github+json" repos/$GITHUB_NEW_REPO/environments/stage
-create_or_update_variable "stage" "AZURE_ENV_NAME" "test"
+  # === RBAC model ===
+  "USE_AD_GROUPS"
+  "GROUPS_PROJECT_MEMBERS_ESML"
+  "GROUPS_PROJECT_MEMBERS_GENAI_1"
+  "GROUPS_CORETEAM_MEMBERS"
+  "PERSONAS_PROJECT_ESML"
+  "PERSONAS_PROJECT_GENAI_1"
+  "PERSONAS_CORE_TEAM"
 
-gh api --method PUT -H "Accept: application/vnd.github+json" repos/$GITHUB_NEW_REPO/environments/prod
-create_or_update_variable "prod" "AZURE_ENV_NAME" "prod"
+  # === Keyvault and security ===
+  "KEYVAULT_SOFT_DELETE"
+  "AIFACTORY_SEEDING_KEYVAULT_NAME"
+  "AIFACTORY_SEEDING_KEYVAULT_RG"
+  "COMMON_SERVICE_PRINCIPAL_KV_S_NAME_APPID"
+  "COMMON_SERVICE_PRINCIPAL_KV_S_NAME_SECRET"
+  "INPUT_COMMON_SPID_KEY"
+  "INPUT_COMMON_SPSECRET_KEY"
+  "INPUT_COMMON_SP_SECRET_KEY"
+  "COMMON_SERVICE_PRINCIPLE_OID_KEY"
 
-# AI Factory globals: variables and secrets
-for env in "${environments[@]}"; do
-    echo -e "${YELLOW}Setting variables and secrets for environment: $env${NC}"
-    
-    # Global: Variables
-    create_or_update_variable $env "AIFACTORY_LOCATION" "$AIFACTORY_LOCATION"
-    create_or_update_variable $env "AIFACTORY_LOCATION_SHORT" "$AIFACTORY_LOCATION_SHORT"
-    create_or_update_variable $env "AIFACTORY_SUFFIX" "$AIFACTORY_SUFFIX"
-    create_or_update_variable $env "AIFACTORY_PREFIX" "$AIFACTORY_PREFIX"
-    create_or_update_variable $env "TENANT_AZUREML_OID" "$TENANT_AZUREML_OID"
-    create_or_update_variable $env "LAKE_PREFIX" "$LAKE_PREFIX"
+  # === Project settings ===
+  "PROJECT_TYPE"
+  "PROJECT_SERVICE_PRINCIPAL_KV_S_NAME_APPID"
+  "PROJECT_SERVICE_PRINCIPAL_KV_S_NAME_OID"
+  "PROJECT_SERVICE_PRINCIPAL_KV_S_NAME_S"
+  "PROJECT_NUMBER"
+  "PROJECT_MEMBERS_EMAILS"
+  "PROJECT_IP_WHITELIST"
+  "TAGS_PROJECT"
 
-    #RBAC model
-    create_or_update_variable $env "USE_AD_GROUPS" "$USE_AD_GROUPS"
-    create_or_update_variable $env "GROUPS_PROJECT_MEMBERS_ESML" "$GROUPS_PROJECT_MEMBERS_ESML"
-    create_or_update_variable $env "GROUPS_PROJECT_MEMBERS_GENAI_1" "$GROUPS_PROJECT_MEMBERS_GENAI_1"
-    create_or_update_variable $env "GROUPS_CORETEAM_MEMBERS" "$GROUPS_CORETEAM_MEMBERS"
+  # === Versioning ===
+  "AIFACTORY_VERSION_MAJOR"
+  "AIFACTORY_VERSION_MINOR"
+  "AIFACTORY_SALT"
+  "AIFACTORY_SALT_RANDOM"
 
-    # Other
-    create_or_update_variable $env "KEYVAULT_SOFT_DELETE" "$KEYVAULT_SOFT_DELETE"
-    
-    # Cost optimization
-    create_or_update_variable $env "USE_COMMON_ACR_FOR_PROJECTS" "$USE_COMMON_ACR_FOR_PROJECTS"
+  # === Networking ===
+  "BYO_SUBNETS"
+  "RUN_JOB1_NETWORKING"
 
-    # Seeding keyvault
-    create_or_update_variable $env "AIFACTORY_SEEDING_KEYVAULT_NAME" "$AIFACTORY_SEEDING_KEYVAULT_NAME"
-    create_or_update_variable $env "AIFACTORY_SEEDING_KEYVAULT_RG" "$AIFACTORY_SEEDING_KEYVAULT_RG"
-    create_or_update_variable $env "COMMON_SERVICE_PRINCIPAL_KV_S_NAME_APPID" "$COMMON_SERVICE_PRINCIPAL_KV_S_NAME_APPID"
-    create_or_update_variable $env "COMMON_SERVICE_PRINCIPAL_KV_S_NAME_SECRET" "$COMMON_SERVICE_PRINCIPAL_KV_S_NAME_SECRET"
+  # === Cost optimization ===
+  "USE_COMMON_ACR_FOR_PROJECTS"
 
-    # Networking
-    create_or_update_variable $env "AIFACTORY_LOCATION_SHORT" "$AIFACTORY_LOCATION_SHORT"
-    
-    # Project specific settings, for all environments
-    create_or_update_variable $env "PROJECT_MEMBERS_EMAILS" "$PROJECT_MEMBERS_EMAILS"
-    create_or_update_variable $env "PROJECT_TYPE" "$PROJECT_TYPE"
-    create_or_update_variable $env "PROJECT_NUMBER" "$PROJECT_NUMBER"
-    create_or_update_variable $env "PROJECT_SERVICE_PRINCIPAL_KV_S_NAME_APPID" "$PROJECT_SERVICE_PRINCIPAL_KV_S_NAME_APPID"
-    create_or_update_variable $env "PROJECT_SERVICE_PRINCIPAL_KV_S_NAME_OID" "$PROJECT_SERVICE_PRINCIPAL_KV_S_NAME_OID"
-    create_or_update_variable $env "PROJECT_SERVICE_PRINCIPAL_KV_S_NAME_S" "$PROJECT_SERVICE_PRINCIPAL_KV_S_NAME_S"
-    
-    # Misc
-    create_or_update_variable $env "RUN_JOB1_NETWORKING" "true"
+  "ENABLE_DEFENDER_FOR_AI_SUB_LEVEL"
+  "ENABLE_DEFENDER_FOR_AI_RESOURCE_LEVEL"
+  "CMK"
+  "CMK_KEY_NAME"
+  "CMK_KEY_VERSION"
+  "CMK_DISABLE_FOR_AI_SEARCH"
+  "CMK_DISABLE_FOR_FOUNDRY"
+  "ADMIN_AISEARCH_TIER"
+  "PROJECT_PREFIX"
+  "PROJECT_SUFFIX"
+  "UPDATE_KEYVAULT_RBAC"
+  "AIFACTORY_COMMON_ONLY_DEV_ENVIRONMENT"
+  "ADMIN_USERNAME"
+  "ADMIN_HYBRID_BENEFIT"
+  "ADMIN_COMMON_RESOURCE_SUFFIX"
+  "ADMIN_PRJ_RESOURCE_SUFFIX"
+  "VNET_RESOURCE_GROUP_BASE"
+  "VNET_NAME_BASE"
+  "SUBNET_COMMON_BASE"
+  "COMMON_VNET_CIDR"
+  "COMMON_SUBNET_CIDR"
+  "COMMON_SUBNET_SCORING_CIDR"
+  "COMMON_PBI_SUBNET_NAME"
+  "COMMON_PBI_SUBNET_CIDR"
+  "COMMON_BASTION_SUBNET_NAME"
+  "COMMON_BASTION_SUBNET_CIDR"
+  "DISABLE_WHITELISTING_FOR_BUILD_AGENTS"
+  "USE_COMMON_ACR_OVERRIDE"
+  "ACR_IP_WHITELIST"
+  "ACR_ADMIN_USER_ENABLED"
+  "ACR_DEDICATED"
+  "ACR_SKU"
 
-    # Global: Secrets
-    create_or_update_secret $env "AIFACTORY_SEEDING_KEYVAULT_SUBSCRIPTION_ID" "$AIFACTORY_SEEDING_KEYVAULT_SUBSCRIPTION_ID"
-    
-    # Project Specifics (1st project bootstrap): 
-    create_or_update_secret $env "PROJECT_MEMBERS" "$PROJECT_MEMBERS"
-    create_or_update_secret $env "PROJECT_MEMBERS_IP_ADDRESS" "$PROJECT_MEMBERS_IP_ADDRESS"
+  # === RBAC: Contributor role override ===
+  "BYO_CONTRIBUTOR_ROLE_ID"
+  "DISABLE_CONTRIBUTOR_ACCESS_FORUSERS"
+  "DISABLE_RBAC_ADMIN_ON_RG_FORUSERS"
+  "DISABLE_SUBNET_JOIN_ACTION"
 
-    create_or_update_secret $env "TENANT_ID" "$TENANT_ID"
+  # === Complete mode vs Incremental mode ===
+  "ENABLE_DELETE_FOR_DISABLED_RESOURCES"
+  "DELETE_ALL_SERVICES_FOR_PROJECT"
+  "DELETE_ALL_FOR_PROJECT"
+
+  # === ENABLE_* flags ===
+  "ENABLE_AI_SERVICES"
+  "ENABLE_AI_FOUNDRY_HUB"
+  "ENABLE_AI_FOUNDRY"
+  "ENABLE_FOUNDRY_CAPHOST"
+  "CLEAN_FOUNDRY_CAPHOST"
+  "ENABLE_AIFACTORY_CREATED_DEFAULT_PROJECT_FOR_AIFV2"
+  "ENABLE_DATAFACTORY"
+  "ENABLE_DATAFACTORY_COMMON"
+  "ENABLE_AZURE_MACHINE_LEARNING"
+  "ENABLE_AKS_FOR_AZURE_ML"
+  "ENABLE_AKS"
+  "ENABLE_DATABRICKS"
+  "ENABLE_AI_SEARCH"
+  "ENABLE_AI_SEARCH_SHARED_PRIVATE_LINK"
+  "ENABLE_AZURE_OPENAI"
+  "ENABLE_AZURE_AI_VISION"
+  "ENABLE_AZURE_SPEECH"
+  "ENABLE_AI_DOC_INTELLIGENCE"
+  "ENABLE_BING"
+  "ENABLE_BING_CUSTOM_SEARCH"
+  "ENABLE_CONTENT_SAFETY"
+  "ENABLE_COSMOS_DB"
+  "ENABLE_POSTGRESQL"
+  "ENABLE_REDIS_CACHE"
+  "ENABLE_SQL_DATABASE"
+  "ENABLE_ELASTICSEARCH"
+  "ENABLE_FUNCTION"
+  "ENABLE_WEBAPP"
+  "ENABLE_CONTAINER_APPS"
+  "ENABLE_APPINSIGHTS_DASHBOARD"
+  "ENABLE_LOGIC_APPS"
+  "ENABLE_EVENT_HUBS"
+  "ENABLE_BOT_SERVICE"
+
+  # === Network env labels ===
+  "DEV_NETWORK_ENV"
+  "STAGE_NETWORK_ENV"
+  "PROD_NETWORK_ENV"
+
+  # === AKS networking ===
+  "AKS_OUTBOUND_TYPE"
+  "AKS_PRIVATE_DNS_ZONE"
+  "AKS_AZURE_FIREWALL_PRIVATE_IP"
+
+  # === Admin overrides ===
+  "ADMIN_AKS_GPU_SKU_DEV_OVERRIDE"
+  "ADMIN_AKS_GPU_SKU_TEST_PROD_OVERRIDE"
+  "ADMIN_AKS_NODES_DEV_OVERRIDE"
+  "ADMIN_AKS_NODES_TEST_PROD_OVERRIDE"
+  "ADMIN_AKS_VERSION_OVERRIDE"
+  "ADMIN_AML_CLUSTER_MAX_NODES_DEV_OVERRIDE"
+  "ADMIN_AML_CLUSTER_MAX_NODES_TEST_PROD_OVERRIDE"
+  "ADMIN_AML_CLUSTER_SKU_DEV_OVERRIDE"
+  "ADMIN_AML_CLUSTER_SKU_TEST_PROD_OVERRIDE"
+  "ADMIN_AML_COMPUTE_INSTANCE_DEV_SKU_OVERRIDE"
+  "ADMIN_AML_COMPUTE_INSTANCE_TEST_PROD_SKU_OVERRIDE"
+  "TAGS"
+  "SERVICE_SETTING_DEPLOY_PROJECT_VM"
+  "DEBUG_DISABLE_VALIDATION_TASKS"
+  "ADMIN_AI_SEARCH_TIER"
+
+  # === Service enable flags and BYO customization ===
+  "UPDATE_AI_FOUNDRY"
+  "FOUNDRY_DEPLOYMENT_TYPE"
+  "DISABLE_AGENT_NETWORK_INJECTION"
+  "VNET_RESOURCE_GROUP_PARAM"
+  "VNET_NAME_FULL_PARAM"
+  "SUBNET_COMMON"
+  "SUBNET_COMMON_SCORING"
+  "SUBNET_COMMON_POWERBI_GW"
+  "SUBNET_PROJ_GENAI"
+  "SUBNET_PROJ_AKS"
+  "SUBNET_PROJ_AKS2"
+  "SUBNET_PROJ_ACA"
+  "SUBNET_PROJ_ACA2"
+  "SUBNET_PROJ_DATABRICKS_PUBLIC"
+  "SUBNET_PROJ_DATABRICKS_PRIVATE"
+  "BYO_ASEV3"
+  "BYO_ASE_FULL_RESOURCE_ID"
+  "BYO_ASE_APP_SERVICE_PLAN_RESOURCE_ID"
+
+  # === Model deployments ===
+  "DEPLOY_MODEL_GPT_X"
+  "MODEL_GPTX_NAME"
+  "MODEL_GPTX_VERSION"
+  "MODEL_GPTX_SKU"
+  "MODEL_GPTX_CAPACITY"
+  "DEPLOY_MODEL_TEXT_EMBEDDING_ADA_002"
+  "DEPLOY_MODEL_TEXT_EMBEDDING_3_LARGE"
+  "DEPLOY_MODEL_TEXT_EMBEDDING_3_SMALL"
+  "DEFAULT_EMBEDDING_CAPACITY"
+  "DEPLOY_MODEL_GPT_54_MINI"
+  "DEFAULT_GPT_54_MINI_VERSION"
+  "DEPLOY_MODEL_GPT_4O"
+  "DEFAULT_GPT_4O_VERSION"
+  "DEFAULT_GPT_CAPACITY"
+  "DEFAULT_MODEL_SKU"
+
+  # === Databases ===
+  "COSMOS_KIND"
+  "POSTGRES_ADMIN_EMAILS"
+  "ELASTIC_TYPE"
+  "ELASTIC_EMAIL"
+  "ELASTIC_FIRST_NAME"
+  "ELASTIC_LAST_NAME"
+  "ELASTIC_COMPANY_NAME"
+  "ELASTIC_DEPLOYMENT_SIZE"
+  "ELASTIC_SKU"
+
+  # === Runtimes ===
+  "FUNCTION_RUNTIME"
+  "FUNCTION_VERSION"
+  "WEBAPP_RUNTIME"
+  "WEBAPP_RUNTIME_VERSION"
+  "ASE_SKU"
+  "ASE_SKU_CODE"
+  "ASE_SKU_WORKERS"
+  "ACA_W_REGISTRY_IMAGE"
+
+  # === Foundry & AKS ===
+  "FOUNDRY_API_MANAGEMENT_RESOURCE_ID"
+  "AKS_SKU_NAME"
+  "AKS_SKU_TIER"
+  "AKS_ENABLE_PRIVATE_CLUSTER"
+
+  # === Debug disables ===
+  "DEBUG_DISABLE_05_BUILD_ACR_IMAGE"
+  "DEBUG_DISABLE_61_FOUNDATION"
+  "DEBUG_DISABLE_62_CORE_INFRASTRUCTURE"
+  "DEBUG_DISABLE_63_COGNITIVE_SERVICES"
+  "DEBUG_DISABLE_64_DATABASES"
+  "DEBUG_DISABLE_65_COMPUTE_SERVICES"
+  "DEBUG_DISABLE_66_AI_PLATFORM"
+  "DEBUG_DISABLE_67_ML_PLATFORM"
+  "DEBUG_DISABLE_68_INTEGRATION"
+  "DEBUG_DISABLE_69_AIFOUNDRY_2025"
+  "DEBUG_DISABLE_100_RBAC_SECURITY"
+  "DEBUG_DISABLE_10_AIFACTORY_DASHBOARDS"
+  "ADD_AI_FOUNDRY_HUB"
+  "ADD_AI_FOUNDRY"
+  "ADD_AI_SEARCH"
+  "ADD_AZURE_MACHINE_LEARNING"
+  "POLICY_EXEMPTION_ASSIGNMENT_IDS"
+  "POLICY_EXEMPTION_DEFINITION_REFERENCE_IDS"
+)
+
+# Apply repo-level variables once
+echo -e "${GREEN}Applying repo-level variables...${NC}"
+for var_name in "${repo_level_vars[@]}"; do
+  var_value="${!var_name}"
+  # Strip outer single quotes from TAGS and TAGS_PROJECT
+  if [[ "$var_name" == "TAGS" || "$var_name" == "TAGS_PROJECT" ]]; then
+    var_value="${var_value#\'}"
+    var_value="${var_value%\'}"
+  fi
+  create_or_update_repo_variable "$var_name" "$var_value"
 done
 
-# DEV variables
+# Create environments and set AZURE_ENV_NAME
+for env in "${environments[@]}"; do
+  gh api --method PUT -H "Accept: application/vnd.github+json" repos/$GITHUB_NEW_REPO/environments/$env
+  create_or_update_variable "$env" "AZURE_ENV_NAME" "$(get_azure_env_name "$env")"
+done
+
+# Environment-specific secrets (same value across envs)
+for env in "${environments[@]}"; do
+    echo -e "${YELLOW}Setting environment-specific secrets for: $env${NC}"
+    create_or_update_secret $env "AIFACTORY_SEEDING_KEYVAULT_SUBSCRIPTION_ID" "$AIFACTORY_SEEDING_KEYVAULT_SUBSCRIPTION_ID"
+    create_or_update_secret $env "TENANT_ID" "$TENANT_ID"
+    create_or_update_secret $env "PROJECT_MEMBERS" "$PROJECT_MEMBERS"
+    create_or_update_secret $env "PROJECT_MEMBERS_IP_ADDRESS" "$PROJECT_MEMBERS_IP_ADDRESS"
+done
+
+# DEV environment specifics
 create_or_update_variable "dev" "AZURE_LOCATION" "$AIFACTORY_LOCATION"
 create_or_update_variable "dev" "AZURE_SUBSCRIPTION_ID" "$DEV_SUBSCRIPTION_ID"
+create_or_update_variable "dev" "CIDR_RANGE" "$DEV_CIDR_RANGE"
+create_or_update_variable "dev" "DEV_CIDR_RANGE" "$DEV_CIDR_RANGE"
 create_or_update_variable "dev" "AIFACTORY_CIDR_XX" "$DEV_CIDR_RANGE"
-create_or_update_variable "dev" "GH_CLI_VERSION" "$gh_version"
-
-# DEV: Secrets
+create_or_update_variable "dev" "DEV_NETWORK_ENV" "$DEV_NETWORK_ENV"
+create_or_update_variable "dev" "NETWORK_ENV" "$DEV_NETWORK_ENV"
 create_or_update_secret "dev" "AZURE_CREDENTIALS" "replace_with_dev_sp_credentials"
 
-# STAGE variables
+# STAGE environment specifics
 create_or_update_variable "stage" "AZURE_LOCATION" "$AIFACTORY_LOCATION"
-create_or_update_variable "stage" "AZURE_SUBSCRIPTION_ID" "$STAGE_SUBSCRIPTION_ID" 
+create_or_update_variable "stage" "AZURE_SUBSCRIPTION_ID" "$STAGE_SUBSCRIPTION_ID"
+create_or_update_variable "stage" "CIDR_RANGE" "$STAGE_CIDR_RANGE"
+create_or_update_variable "stage" "STAGE_CIDR_RANGE" "$STAGE_CIDR_RANGE"
 create_or_update_variable "stage" "AIFACTORY_CIDR_XX" "$STAGE_CIDR_RANGE"
-
-# STAGE: Secrets
+create_or_update_variable "stage" "STAGE_NETWORK_ENV" "$STAGE_NETWORK_ENV"
+create_or_update_variable "stage" "NETWORK_ENV" "$STAGE_NETWORK_ENV"
 create_or_update_secret "stage" "AZURE_CREDENTIALS" "replace_with_stage_sp_credentials"
 
-# PROD variables
+# PROD environment specifics
 create_or_update_variable "prod" "AZURE_LOCATION" "$AIFACTORY_LOCATION"
 create_or_update_variable "prod" "AZURE_SUBSCRIPTION_ID" "$PROD_SUBSCRIPTION_ID"
+create_or_update_variable "prod" "CIDR_RANGE" "$PROD_CIDR_RANGE"
+create_or_update_variable "prod" "PROD_CIDR_RANGE" "$PROD_CIDR_RANGE"
 create_or_update_variable "prod" "AIFACTORY_CIDR_XX" "$PROD_CIDR_RANGE"
-
-# PROD: Secrets
+create_or_update_variable "prod" "PROD_NETWORK_ENV" "$PROD_NETWORK_ENV"
+create_or_update_variable "prod" "NETWORK_ENV" "$PROD_NETWORK_ENV"
 create_or_update_secret "prod" "AZURE_CREDENTIALS" "replace_with_prod_sp_credentials"
 
 # TODO Future: dev.env / stage.env / prod.env

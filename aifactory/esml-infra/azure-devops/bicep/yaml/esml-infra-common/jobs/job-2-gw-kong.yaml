@@ -1,0 +1,232 @@
+# ============================================================================
+# Job 2: Kong API Gateway Deployment
+# Deploys Kong Gateway OSS on Azure Container Instances with VNet injection
+# to proxy requests to Azure OpenAI (private endpoint)
+# ============================================================================
+parameters:
+  - name: serviceConnection
+    type: string
+  - name: seedingKvServiceConnection
+    type: string
+    default: ''
+
+steps:
+
+- checkout: self
+  submodules: true
+  continueOnError: false
+  displayName: GIT
+  enabled: true
+  name: GIT
+
+- task: AzureCLI@2
+  displayName: '00_kong_print_info'
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnection }}
+    scriptType: pscore
+    scriptLocation: inlineScript
+    inlineScript: |
+      Write-Host "============================================"
+      Write-Host "Kong API Gateway Deployment"
+      Write-Host "============================================"
+      Write-Host "Environment: $(dev_test_prod)"
+      Write-Host "Location: $(admin_location)"
+      Write-Host "VNet RG: $(admin_aifactoryPrefixRG)esml-common-$(admin_locationSuffix)-$(dev_test_prod)$(admin_aifactorySuffixRG)"
+      Write-Host "VNet: $(vnetNameBase)-$(admin_locationSuffix)-$(dev_test_prod)-001"
+      Write-Host "Kong Subnet CIDR: $(kong_subnet_cidr)"
+      Write-Host "Kong Image: $(kong_image)"
+      Write-Host "Azure OpenAI Endpoint: $(kong_azure_openai_endpoint)"
+      Write-Host "============================================"
+
+- task: AzureCLI@2
+  displayName: '00a_get_ip_for_ado_agent'
+  condition: ne(variables['disable_whitelisting_for_build_agents'], 'true')
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnection }}
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      PRIMARY_IP=$(curl -s http://ipinfo.io/ip)
+      echo "Primary IP: $PRIMARY_IP"
+      echo "##vso[task.setvariable variable=admin_ip_fw]$PRIMARY_IP"
+
+- task: AzureCLI@2
+  displayName: '00b_whitelist_ip_on_seeding_kv'
+  condition: ne(variables['disable_whitelisting_for_build_agents'], 'true')
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnection }}
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      az account set --subscription "$(admin_bicep_input_keyvault_subscription)"
+      az keyvault update --name "$(admin_bicep_kv_fw)" --resource-group "$(admin_bicep_kv_fw_rg)" --public-network-access Enabled --default-action Deny
+      echo "Waiting for network rules to propagate..."
+      sleep 10
+      az keyvault network-rule add --resource-group "$(admin_bicep_kv_fw_rg)" --name "$(admin_bicep_kv_fw)" --ip-address "$(admin_ip_fw)"
+
+- task: AzureCLI@2
+  displayName: '01_kong_fetch_secrets_from_kv'
+  inputs:
+    azureSubscription: ${{ coalesce(parameters.seedingKvServiceConnection, parameters.serviceConnection) }}
+    scriptType: pscore
+    scriptLocation: inlineScript
+    inlineScript: |
+      # Fetch Azure OpenAI API key from seeding Key Vault
+      $openaiKey = az keyvault secret show `
+        --vault-name "$(admin_bicep_kv_fw)" `
+        --name "$(kong_openai_key_secret_name)" `
+        --query "value" -o tsv
+      
+      if (-not $openaiKey) {
+        Write-Error "Failed to fetch Azure OpenAI API key from Key Vault: $(admin_bicep_kv_fw)"
+        exit 1
+      }
+      
+      # Set as pipeline variable (secret)
+      Write-Host "##vso[task.setvariable variable=AZURE_OPENAI_API_KEY;issecret=true]$openaiKey"
+      Write-Host "Successfully fetched Azure OpenAI API key from Key Vault"
+
+      # Fetch or generate Kong consumer API key
+      $kongConsumerKey = az keyvault secret show `
+        --vault-name "$(admin_bicep_kv_fw)" `
+        --name "$(kong_consumer_key_secret_name)" `
+        --query "value" -o tsv 2>$null
+      
+      if (-not $kongConsumerKey) {
+        $kongConsumerKey = [System.Guid]::NewGuid().ToString()
+        Write-Host "Generated new Kong consumer API key (not found in KV)"
+      }
+      Write-Host "##vso[task.setvariable variable=KONG_CONSUMER_API_KEY;issecret=true]$kongConsumerKey"
+
+- task: AzureCLI@2
+  displayName: '02_kong_deploy_bicep'
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnection }}
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      az deployment sub create \
+        --name "kong-gw-$(dev_test_prod)-$(admin_locationSuffix)$(admin_aifactorySuffixRG)-$(Build.BuildId)" \
+        --subscription "$(dev_test_prod_sub_id)" \
+        --location "$(admin_location)" \
+        --template-file "azure-enterprise-scale-ml/environment_setup/aigateway/kong/main.bicep" \
+        --parameters env="$(dev_test_prod)" \
+        --parameters location="$(admin_location)" \
+        --parameters locationSuffix="$(admin_locationSuffix)" \
+        --parameters aifactorySuffixRG="$(admin_aifactorySuffixRG)" \
+        --parameters commonRGNamePrefix="$(admin_aifactoryPrefixRG)" \
+        --parameters tags='$(tags)' \
+        --parameters vnetResourceGroupName="$(admin_aifactoryPrefixRG)esml-common-$(admin_locationSuffix)-$(dev_test_prod)$(admin_aifactorySuffixRG)" \
+        --parameters vnetName="$(vnetNameBase)-$(admin_locationSuffix)-$(dev_test_prod)-001" \
+        --parameters kongSubnetCidr="$(kong_subnet_cidr)" \
+        --parameters kongSubnetName="$(kong_subnet_name)" \
+        --parameters kongImage="$(kong_image)" \
+        --parameters kongCpu=$(kong_cpu) \
+        --parameters kongMemoryGb=$(kong_memory_gb) \
+        --parameters azureOpenAIEndpoint="$(kong_azure_openai_endpoint)" \
+        --parameters azureOpenAIApiKey="$(AZURE_OPENAI_API_KEY)" \
+        --parameters userAssignedIdentityId="$(kong_user_assigned_identity_id)" \
+        --parameters commonResourceSuffix="$(admin_commonResourceSuffix)"
+    workingDirectory: '$(System.DefaultWorkingDirectory)'
+
+- task: AzureCLI@2
+  displayName: '03_kong_upload_config'
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnection }}
+    scriptType: pscore
+    scriptLocation: inlineScript
+    inlineScript: |
+      # Get the storage account name from deployment output
+      $deploymentName = "kong-gw-$(dev_test_prod)-$(admin_locationSuffix)$(admin_aifactorySuffixRG)-$(Build.BuildId)"
+      
+      $storageAccountName = az deployment sub show `
+        --name $deploymentName `
+        --subscription "$(dev_test_prod_sub_id)" `
+        --query "properties.outputs.storageAccountName.value" -o tsv
+      
+      $kongRgName = az deployment sub show `
+        --name $deploymentName `
+        --subscription "$(dev_test_prod_sub_id)" `
+        --query "properties.outputs.kongResourceGroupName.value" -o tsv
+
+      Write-Host "Storage Account: $storageAccountName"
+      Write-Host "Kong RG: $kongRgName"
+
+      # Upload Kong config
+      & "$(System.DefaultWorkingDirectory)/azure-enterprise-scale-ml/environment_setup/aigateway/kong/scripts/upload-kong-config.ps1" `
+        -ResourceGroupName $kongRgName `
+        -StorageAccountName $storageAccountName `
+        -SubscriptionId "$(dev_test_prod_sub_id)" `
+        -KongConfigPath "$(System.DefaultWorkingDirectory)/azure-enterprise-scale-ml/environment_setup/aigateway/kong/kong.yaml" `
+        -AzureOpenAIApiKey "$(AZURE_OPENAI_API_KEY)" `
+        -KongConsumerApiKey "$(KONG_CONSUMER_API_KEY)"
+
+- task: AzureCLI@2
+  displayName: '04_kong_restart_container'
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnection }}
+    scriptType: pscore
+    scriptLocation: inlineScript
+    inlineScript: |
+      # Get Kong RG name
+      $deploymentName = "kong-gw-$(dev_test_prod)-$(admin_locationSuffix)$(admin_aifactorySuffixRG)-$(Build.BuildId)"
+      
+      $kongRgName = az deployment sub show `
+        --name $deploymentName `
+        --subscription "$(dev_test_prod_sub_id)" `
+        --query "properties.outputs.kongResourceGroupName.value" -o tsv
+
+      # Restart Kong to pick up the new config
+      & "$(System.DefaultWorkingDirectory)/azure-enterprise-scale-ml/environment_setup/aigateway/kong/scripts/restart-kong.ps1" `
+        -ResourceGroupName $kongRgName `
+        -SubscriptionId "$(dev_test_prod_sub_id)"
+
+- task: AzureCLI@2
+  displayName: '05_kong_verify_health'
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnection }}
+    scriptType: pscore
+    scriptLocation: inlineScript
+    inlineScript: |
+      $deploymentName = "kong-gw-$(dev_test_prod)-$(admin_locationSuffix)$(admin_aifactorySuffixRG)-$(Build.BuildId)"
+      
+      $kongIp = az deployment sub show `
+        --name $deploymentName `
+        --subscription "$(dev_test_prod_sub_id)" `
+        --query "properties.outputs.kongPrivateIp.value" -o tsv
+      
+      $kongRgName = az deployment sub show `
+        --name $deploymentName `
+        --subscription "$(dev_test_prod_sub_id)" `
+        --query "properties.outputs.kongResourceGroupName.value" -o tsv
+
+      Write-Host "============================================"
+      Write-Host "Kong Gateway Deployment Complete"
+      Write-Host "============================================"
+      Write-Host "Kong Private IP: $kongIp"
+      Write-Host "Kong Proxy URL: http://${kongIp}:8000"
+      Write-Host "Kong Admin URL: http://${kongIp}:8001"
+      Write-Host "Kong RG: $kongRgName"
+      Write-Host ""
+      Write-Host "Usage Examples:"
+      Write-Host "  Chat Completions: POST http://${kongIp}:8000/ai/chat/<deployment-name>/chat/completions?api-version=2024-10-21"
+      Write-Host "  OpenAI API:       GET  http://${kongIp}:8000/openai/openai/deployments?api-version=2024-10-21"
+      Write-Host ""
+      Write-Host "Header required: 'apikey: <your-kong-consumer-key>' or 'x-api-key: <your-kong-consumer-key>'"
+      Write-Host "============================================"
+
+      # Show container status
+      az container list `
+        --resource-group $kongRgName `
+        --query "[?contains(name,'kong')].{Name:name, Status:instanceView.state, IP:ipAddress.ip}" -o table
+
+- task: AzureCLI@2
+  displayName: '06_remove_ip_from_seeding_kv'
+  condition: and(always(), ne(variables['disable_whitelisting_for_build_agents'], 'true'))
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnection }}
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      az account set --subscription "$(admin_bicep_input_keyvault_subscription)"
+      az keyvault network-rule remove --resource-group "$(admin_bicep_kv_fw_rg)" --name "$(admin_bicep_kv_fw)" --ip-address "$(admin_ip_fw)"

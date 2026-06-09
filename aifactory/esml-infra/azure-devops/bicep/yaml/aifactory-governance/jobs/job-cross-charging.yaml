@@ -1,0 +1,843 @@
+parameters:
+  - name: serviceConnection
+    type: string
+  - name: serviceConnectionSeeding
+    type: string
+
+steps:
+- task: AzureCLI@2
+  displayName: '00_pwsh_print_info'
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnection }}
+    scriptType: pscore
+    scriptLocation: inlineScript
+    inlineScript: |
+      Write-Host "=== Cross-Charging Report Generation ==="
+      Write-Host "Environment: $(dev_test_prod)"
+      Write-Host "Subscription ID: $(dev_test_prod_sub_id)"
+      Write-Host "AI Factory Prefix: $(admin_aifactoryPrefixRG)"
+      Write-Host "Location Suffix: $(admin_locationSuffix)"
+      Write-Host "AI Factory Suffix: $(admin_aifactorySuffixRG)"
+      Write-Host "Project Prefix: $(projectPrefix)"
+      Write-Host "Project Suffix: $(projectSuffix)"
+      Write-Host "Common Lake Prefix: $(commonLakeNamePrefixMax8chars)"
+      Write-Host "Lake Container: $(lakeContainerName)"
+      Write-Host "Current Date: $(date +%Y-%m-%d)"
+
+- task: AzureCLI@2
+  displayName: '01_generate_deployment_random_value'
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnection }}
+    scriptType: pscore
+    scriptLocation: inlineScript
+    inlineScript: |
+      # Generate a random deployment ID for this entire pipeline run
+      $randomValue = Get-Random -Minimum 100000 -Maximum 999999
+      Write-Host "Generated random value: $randomValue"
+      echo "##vso[task.setvariable variable=deployment_random_value]$randomValue"
+
+- task: AzureCLI@2
+  displayName: '02_set_environment_variables'
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnection }}
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      #!/bin/bash
+      
+      # Set environment variables for the cross-charging scripts
+      export AIFACTORY_PREFIX_RG="$(admin_aifactoryPrefixRG)"
+      export LOCATION_SUFFIX="$(admin_locationSuffix)"
+      export AIFACTORY_SUFFIX_RG="$(admin_aifactorySuffixRG)"
+      export PROJECT_PREFIX="$(projectPrefix)"
+      export PROJECT_SUFFIX="$(projectSuffix)"
+      export ENVIRONMENT="$(dev_test_prod)"
+      export SUBSCRIPTION_ID="$(dev_test_prod_sub_id)"
+      export COMMON_LAKE_PREFIX="$(commonLakeNamePrefixMax8chars)"
+      export LAKE_CONTAINER_NAME="$(lakeContainerName)"
+      export DEPLOYMENT_RANDOM="$(deployment_random_value)"
+      
+      echo "Environment variables set successfully"
+      echo "AIFACTORY_PREFIX_RG: $AIFACTORY_PREFIX_RG"
+      echo "LOCATION_SUFFIX: $LOCATION_SUFFIX"
+      echo "ENVIRONMENT: $ENVIRONMENT"
+
+- task: AzureCLI@2
+  displayName: '03_discover_resource_groups'
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnection }}
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      #!/bin/bash
+      
+      # Set environment variables for the script
+      export AIFACTORY_PREFIX_RG="$(admin_aifactoryPrefixRG)"
+      export LOCATION_SUFFIX="$(admin_locationSuffix)"
+      export AIFACTORY_SUFFIX_RG="$(admin_aifactorySuffixRG)"
+      export PROJECT_PREFIX="$(projectPrefix)"
+      export PROJECT_SUFFIX="$(projectSuffix)"
+      export ENVIRONMENT="$(dev_test_prod)"
+      export SUBSCRIPTION_ID="$(dev_test_prod_sub_id)"
+      export COMMON_LAKE_PREFIX="$(commonLakeNamePrefixMax8chars)"
+      export LAKE_CONTAINER_NAME="$(lakeContainerName)"
+      export DEPLOYMENT_RANDOM="$(deployment_random_value)"
+      export TENANT_ID="$(tenantId)"
+      
+      echo "=== AI Factory Resource Group Discovery ==="
+      echo "Subscription ID: $SUBSCRIPTION_ID"
+      echo "Tenant ID: $TENANT_ID"
+      echo "Environment: $ENVIRONMENT"
+      echo "AI Factory Prefix: $AIFACTORY_PREFIX_RG"
+      echo "AI Factory Suffix: $AIFACTORY_SUFFIX_RG"
+      
+      # Discover resource groups with AI Factory naming pattern
+      az account set --subscription "$SUBSCRIPTION_ID"
+      
+      # Get resource groups matching the AI Factory pattern
+      RG_PATTERN="${AIFACTORY_PREFIX_RG}*${ENVIRONMENT}*${AIFACTORY_SUFFIX_RG}*"
+      echo "Searching for resource groups with pattern: $RG_PATTERN"
+      
+      az group list --query "[?contains(name, '${AIFACTORY_PREFIX_RG}') && contains(name, '${ENVIRONMENT}') && contains(name, '${AIFACTORY_SUFFIX_RG}')].name" -o tsv > /tmp/resource_groups_${DEPLOYMENT_RANDOM}.txt
+      
+      echo "Found resource groups:"
+      cat /tmp/resource_groups_${DEPLOYMENT_RANDOM}.txt
+
+- task: AzureCLI@2
+  displayName: '04_collect_cost_data'
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnection }}
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      #!/bin/bash
+      
+      # Set environment variables for the script
+      export AIFACTORY_PREFIX_RG="$(admin_aifactoryPrefixRG)"
+      export LOCATION_SUFFIX="$(admin_locationSuffix)"
+      export AIFACTORY_SUFFIX_RG="$(admin_aifactorySuffixRG)"
+      export PROJECT_PREFIX="$(projectPrefix)"
+      export PROJECT_SUFFIX="$(projectSuffix)"
+      export ENVIRONMENT="$(dev_test_prod)"
+      export SUBSCRIPTION_ID="$(dev_test_prod_sub_id)"
+      export COMMON_LAKE_PREFIX="$(commonLakeNamePrefixMax8chars)"
+      export LAKE_CONTAINER_NAME="$(lakeContainerName)"
+      export DEPLOYMENT_RANDOM="$(deployment_random_value)"
+      export TENANT_ID="$(tenantId)"
+      
+      echo "=== Collecting Cost Data ==="
+      echo "Subscription ID: $SUBSCRIPTION_ID"
+      echo "Tenant ID: $TENANT_ID"
+      
+      # Set the subscription context (tenant is automatically resolved by service connection)
+      az account set --subscription "$SUBSCRIPTION_ID"
+      
+      # Test basic Azure CLI connectivity and permissions
+      echo "Testing Azure CLI permissions..."
+      echo "Note: Running under service connection (service principal) context"
+      
+      # Get current authenticated identity (should be the service principal)
+      CURRENT_USER=$(az account show --subscription "$SUBSCRIPTION_ID" --query "user.name" -o tsv 2>/dev/null)
+      CURRENT_USER_TYPE=$(az account show --subscription "$SUBSCRIPTION_ID" --query "user.type" -o tsv 2>/dev/null)
+      
+      if [ $? -eq 0 ]; then
+        echo "✓ Successfully authenticated via service connection"
+        echo "Service Principal ID: $CURRENT_USER"
+        echo "Account type: $CURRENT_USER_TYPE"
+        
+        # Verify this is indeed a service principal
+        if [ "$CURRENT_USER_TYPE" = "servicePrincipal" ]; then
+          echo "✓ Confirmed: Running as Service Principal (correct)"
+        else
+          echo "⚠ Warning: Not running as Service Principal. Type: $CURRENT_USER_TYPE"
+        fi
+        
+        # List all resource groups to verify access
+        echo "Testing resource group listing..."
+        ALL_RG_COUNT=$(az group list --subscription "$SUBSCRIPTION_ID" --query "length([])" -o tsv 2>/dev/null)
+        echo "Total resource groups in subscription: $ALL_RG_COUNT"
+        
+      else
+        echo "❌ Failed to authenticate with Azure CLI"
+        exit 1
+      fi
+      
+      # Test if we can list resource groups at all
+      echo "Testing AI Factory resource group access..."
+      TEST_RG_COUNT=$(az group list --subscription "$SUBSCRIPTION_ID" --query "length([?contains(name, '${AIFACTORY_PREFIX_RG}')])" -o tsv 2>/dev/null)
+      if [ $? -eq 0 ]; then
+        echo "✓ Can access resource groups. Found $TEST_RG_COUNT AI Factory resource groups"
+        
+        # Show the actual resource group names we found
+        echo "AI Factory resource groups found:"
+        az group list --subscription "$SUBSCRIPTION_ID" --query "[?contains(name, '${AIFACTORY_PREFIX_RG}')].name" -o tsv 2>/dev/null
+        
+      else
+        echo "❌ Cannot list resource groups. Check service connection permissions"
+        exit 1
+      fi
+      
+      # Initialize cost data file
+      COST_FILE="/tmp/cost_data_${DEPLOYMENT_RANDOM}.csv"
+      echo "ResourceGroup,Location,CurrentMonthCostUSD,LastMonthCostUSD,ResourceCount,Currency,CostCenter,ProjectOwners,AIFactoryProject" > "$COST_FILE"
+      
+      # Read resource groups from discovery file and get actual cost data
+      if [ -f "/tmp/resource_groups_${DEPLOYMENT_RANDOM}.txt" ]; then
+        echo "Processing resource groups from discovery file..."
+        echo "Getting actual cost data from Azure Cost Management API..."
+        
+        # Get current date for cost queries
+        CURRENT_DATE=$(date +%Y-%m-%d)
+        CURRENT_MONTH_START=$(date +%Y-%m-01)
+        LAST_MONTH_START=$(date -d "$(date +%Y-%m-01) -1 month" +%Y-%m-01)
+        LAST_MONTH_END=$(date -d "$(date +%Y-%m-01) -1 day" +%Y-%m-%d)
+        
+        echo "Cost analysis period:"
+        echo "Current month: $CURRENT_MONTH_START to $CURRENT_DATE"
+        echo "Last month: $LAST_MONTH_START to $LAST_MONTH_END"
+        
+        # Test Cost Management API permissions first
+        echo "Testing Cost Management API access..."
+        TEST_COST_QUERY=$(az costmanagement query \
+          --type "ActualCost" \
+          --scope "/subscriptions/$SUBSCRIPTION_ID" \
+          --timeframe "MonthToDate" \
+          --dataset-aggregation "{\"totalCost\":{\"name\":\"PreTaxCost\",\"function\":\"Sum\"}}" \
+          --query "properties.rows" -o json 2>&1)
+        
+        if echo "$TEST_COST_QUERY" | grep -q "Forbidden\|Unauthorized\|AccessDenied"; then
+          echo "❌ ERROR: Service principal lacks Cost Management permissions"
+          echo "Required roles: 'Cost Management Reader' or 'Billing Reader'"
+          echo "Current error: $TEST_COST_QUERY"
+          exit 1
+        elif echo "$TEST_COST_QUERY" | grep -q "rows"; then
+          echo "✓ Cost Management API access confirmed"
+        else
+          echo "⚠ Cost Management API test unclear: $TEST_COST_QUERY"
+        fi
+        
+        # Test if we can get ANY cost data for September 2025
+        echo "Testing September 2025 cost data availability..."
+        SEPT_TEST=$(az costmanagement query \
+          --type "ActualCost" \
+          --scope "/subscriptions/$SUBSCRIPTION_ID" \
+          --timeframe "Custom" \
+          --time-period from="$LAST_MONTH_START" to="$LAST_MONTH_END" \
+          --dataset-aggregation "{\"totalCost\":{\"name\":\"PreTaxCost\",\"function\":\"Sum\"}}" \
+          -o json 2>&1)
+        
+        echo "September test result: $SEPT_TEST"
+        
+        if echo "$SEPT_TEST" | grep -q "properties"; then
+          SEPT_ROWS=$(echo "$SEPT_TEST" | jq -r '.properties.rows // []' 2>/dev/null)
+          if [ "$SEPT_ROWS" != "[]" ] && [ "$SEPT_ROWS" != "null" ]; then
+            TOTAL_SEPT_COST=$(echo "$SEPT_ROWS" | jq -r '.[0][0] // 0' 2>/dev/null)
+            echo "✓ Found September cost data for subscription: \$$TOTAL_SEPT_COST"
+          else
+            echo "⚠ No September cost data found for entire subscription"
+          fi
+        else
+          echo "❌ Failed to query September costs"
+        fi
+        
+        # Test consumption API permissions
+        echo "Testing Consumption API access..."
+        TEST_CONSUMPTION=$(az consumption usage list \
+          --subscription "$SUBSCRIPTION_ID" \
+          --start-date "$LAST_MONTH_START" \
+          --end-date "$LAST_MONTH_END" \
+          --top 1 \
+          -o json 2>&1)
+        
+        if echo "$TEST_CONSUMPTION" | grep -q "Forbidden\|Unauthorized\|AccessDenied"; then
+          echo "⚠ WARNING: Service principal lacks Consumption API access"
+          echo "Will rely on Cost Management API only"
+        elif echo "$TEST_CONSUMPTION" | grep -q "\[\]"; then
+          echo "✓ Consumption API access confirmed (empty result is normal)"
+        else
+          echo "✓ Consumption API access confirmed"
+        fi
+        
+        cat "/tmp/resource_groups_${DEPLOYMENT_RANDOM}.txt" | while IFS= read -r rg_name_raw; do
+          # Clean the resource group name
+          rg_name=$(echo "$rg_name_raw" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          
+          if [ -n "$rg_name" ]; then
+            echo "Getting cost data for resource group: '$rg_name'"
+            
+            # Check if resource group exists and get basic info including tags
+            RG_INFO_JSON=$(az group show --name "$rg_name" --subscription "$SUBSCRIPTION_ID" --query "{location:location,state:properties.provisioningState,tags:tags}" -o json 2>/dev/null)
+            
+            if [ $? -eq 0 ] && [ -n "$RG_INFO_JSON" ]; then
+              RG_LOCATION=$(echo "$RG_INFO_JSON" | jq -r '.location // "Unknown"')
+              echo "✓ Resource group accessible - Location: $RG_LOCATION"
+              
+              # Extract tags for cost center and project information
+              COST_CENTER=$(echo "$RG_INFO_JSON" | jq -r '.tags.CostCenter // .tags.costcenter // .tags.COSTCENTER // "N/A"')
+              PROJECT_OWNERS=$(echo "$RG_INFO_JSON" | jq -r '.tags["AIF-Project Owners"] // .tags["aif-project-owners"] // .tags.ProjectOwners // .tags.projectowners // "N/A"')
+              AIFACTORY_PROJECT=$(echo "$RG_INFO_JSON" | jq -r '.tags["AIFactory project"] // .tags["aifactory-project"] // .tags["AI Factory project"] // .tags["ai-factory-project"] // "N/A"')
+              
+              # Clean tag values for CSV (remove commas and quotes)
+              COST_CENTER_CLEAN=$(echo "$COST_CENTER" | sed 's/,/_/g' | sed 's/"//g')
+              PROJECT_OWNERS_CLEAN=$(echo "$PROJECT_OWNERS" | sed 's/,/_/g' | sed 's/"//g')
+              AIFACTORY_PROJECT_CLEAN=$(echo "$AIFACTORY_PROJECT" | sed 's/,/_/g' | sed 's/"//g')
+              
+              echo "  Tags - CostCenter: $COST_CENTER_CLEAN, ProjectOwners: $PROJECT_OWNERS_CLEAN, AIFactoryProject: $AIFACTORY_PROJECT_CLEAN"
+              
+              # Get resource count for this RG
+              RESOURCE_COUNT=$(az resource list --resource-group "$rg_name" --subscription "$SUBSCRIPTION_ID" --query "length([])" -o tsv 2>/dev/null)
+              if [ -z "$RESOURCE_COUNT" ]; then
+                RESOURCE_COUNT=0
+              fi
+              
+              # Get current month cost using Cost Management API
+              echo "  Getting current month cost..."
+              echo "  Debug: Querying cost data for RG '$rg_name' in subscription '$SUBSCRIPTION_ID'"
+              echo "  Debug: Period $CURRENT_MONTH_START to $CURRENT_DATE"
+              
+              # Method 1: Direct Cost Management API with better error handling
+              echo "  Method 1: Cost Management API with resource group scope..."
+              CURRENT_COST_JSON=$(az costmanagement query \
+                --type "ActualCost" \
+                --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$rg_name" \
+                --timeframe "MonthToDate" \
+                --dataset-aggregation "{\"totalCost\":{\"name\":\"PreTaxCost\",\"function\":\"Sum\"}}" \
+                -o json 2>&1)
+              
+              echo "  Debug: Raw response: $CURRENT_COST_JSON"
+              
+              # Check for errors in response
+              if echo "$CURRENT_COST_JSON" | grep -q "Forbidden\|Unauthorized\|AccessDenied"; then
+                echo "  ❌ Permission error: $CURRENT_COST_JSON"
+                CURRENT_COST=0
+                CURRENCY="USD"
+              elif echo "$CURRENT_COST_JSON" | grep -q "properties"; then
+                # Extract cost from response
+                COST_ROWS=$(echo "$CURRENT_COST_JSON" | jq -r '.properties.rows // []' 2>/dev/null)
+                if [ "$COST_ROWS" != "[]" ] && [ "$COST_ROWS" != "null" ]; then
+                  CURRENT_COST=$(echo "$COST_ROWS" | jq -r '.[0][0] // 0' 2>/dev/null)
+                  CURRENCY=$(echo "$COST_ROWS" | jq -r '.[0][2] // "USD"' 2>/dev/null)
+                  echo "  ✓ Got current month cost: \$$CURRENT_COST $CURRENCY"
+                else
+                  echo "  ⚠ No cost data in response (empty rows)"
+                  CURRENT_COST=0
+                  CURRENCY="USD"
+                fi
+              else
+                echo "  Method 2: Trying subscription scope with filter..."
+                # Try subscription scope with resource group filter
+                CURRENT_COST_JSON=$(az costmanagement query \
+                  --type "ActualCost" \
+                  --scope "/subscriptions/$SUBSCRIPTION_ID" \
+                  --timeframe "MonthToDate" \
+                  --dataset-aggregation "{\"totalCost\":{\"name\":\"PreTaxCost\",\"function\":\"Sum\"}}" \
+                  --dataset-grouping name="ResourceGroupName" type="Dimension" \
+                  --dataset-filter "{\"dimensions\":{\"name\":\"ResourceGroupName\",\"operator\":\"In\",\"values\":[\"$rg_name\"]}}" \
+                  -o json 2>&1)
+                
+                echo "  Debug: Subscription scope response: $CURRENT_COST_JSON"
+                
+                if echo "$CURRENT_COST_JSON" | grep -q "properties"; then
+                  COST_ROWS=$(echo "$CURRENT_COST_JSON" | jq -r '.properties.rows // []' 2>/dev/null)
+                  if [ "$COST_ROWS" != "[]" ] && [ "$COST_ROWS" != "null" ]; then
+                    CURRENT_COST=$(echo "$COST_ROWS" | jq -r '.[0][0] // 0' 2>/dev/null)
+                    CURRENCY=$(echo "$COST_ROWS" | jq -r '.[0][2] // "USD"' 2>/dev/null)
+                    echo "  ✓ Got current month cost via subscription scope: \$$CURRENT_COST $CURRENCY"
+                  else
+                    echo "  ⚠ No cost data for this resource group in current month"
+                    CURRENT_COST=0
+                    CURRENCY="USD"
+                  fi
+                else
+                  echo "  ❌ All cost retrieval methods failed for current month"
+                  CURRENT_COST=0
+                  CURRENCY="USD"
+                fi
+              fi
+              
+              # Get last month cost using Cost Management API
+              echo "  Getting last month cost..."
+              echo "  Debug: Period $LAST_MONTH_START to $LAST_MONTH_END"
+              
+              # Use Cost Management API for last month (September 2025)
+              LAST_COST_JSON=$(az costmanagement query \
+                --type "ActualCost" \
+                --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$rg_name" \
+                --timeframe "Custom" \
+                --time-period from="$LAST_MONTH_START" to="$LAST_MONTH_END" \
+                --dataset-aggregation "{\"totalCost\":{\"name\":\"PreTaxCost\",\"function\":\"Sum\"}}" \
+                -o json 2>&1)
+              
+              echo "  Debug: Last month response: $LAST_COST_JSON"
+              
+              if echo "$LAST_COST_JSON" | grep -q "Forbidden\|Unauthorized\|AccessDenied"; then
+                echo "  ❌ Permission error for last month: $LAST_COST_JSON"
+                LAST_COST=0
+              elif echo "$LAST_COST_JSON" | grep -q "properties"; then
+                COST_ROWS=$(echo "$LAST_COST_JSON" | jq -r '.properties.rows // []' 2>/dev/null)
+                if [ "$COST_ROWS" != "[]" ] && [ "$COST_ROWS" != "null" ]; then
+                  LAST_COST=$(echo "$COST_ROWS" | jq -r '.[0][0] // 0' 2>/dev/null)
+                  echo "  ✓ Got last month cost: \$$LAST_COST"
+                else
+                  echo "  ⚠ No cost data for September (trying subscription scope)..."
+                  # Try subscription scope for last month
+                  LAST_COST_JSON=$(az costmanagement query \
+                    --type "ActualCost" \
+                    --scope "/subscriptions/$SUBSCRIPTION_ID" \
+                    --timeframe "Custom" \
+                    --time-period from="$LAST_MONTH_START" to="$LAST_MONTH_END" \
+                    --dataset-aggregation "{\"totalCost\":{\"name\":\"PreTaxCost\",\"function\":\"Sum\"}}" \
+                    --dataset-grouping name="ResourceGroupName" type="Dimension" \
+                    --dataset-filter "{\"dimensions\":{\"name\":\"ResourceGroupName\",\"operator\":\"In\",\"values\":[\"$rg_name\"]}}" \
+                    -o json 2>&1)
+                  
+                  if echo "$LAST_COST_JSON" | grep -q "properties"; then
+                    COST_ROWS=$(echo "$LAST_COST_JSON" | jq -r '.properties.rows // []' 2>/dev/null)
+                    if [ "$COST_ROWS" != "[]" ] && [ "$COST_ROWS" != "null" ]; then
+                      LAST_COST=$(echo "$COST_ROWS" | jq -r '.[0][0] // 0' 2>/dev/null)
+                      echo "  ✓ Got last month cost via subscription scope: \$$LAST_COST"
+                    else
+                      echo "  ⚠ No September cost data found for resource group"
+                      LAST_COST=0
+                    fi
+                  else
+                    echo "  ❌ Failed to get September cost data"
+                    LAST_COST=0
+                  fi
+                fi
+              else
+                echo "  ❌ Invalid response for last month cost"
+                LAST_COST=0
+              fi
+              
+              # Format cost values to 2 decimal places
+              CURRENT_COST_FORMATTED=$(printf "%.2f" "$CURRENT_COST" 2>/dev/null || echo "0.00")
+              LAST_COST_FORMATTED=$(printf "%.2f" "$LAST_COST" 2>/dev/null || echo "0.00")
+              
+              echo "  Final costs: Current=\$$CURRENT_COST_FORMATTED, Last=\$$LAST_COST_FORMATTED, Resources=$RESOURCE_COUNT"
+              
+              # Debug: If costs are zero, provide guidance
+              if [ "$CURRENT_COST_FORMATTED" = "0.00" ] && [ "$LAST_COST_FORMATTED" = "0.00" ]; then
+                echo "  💡 Cost data is zero. This could be due to:"
+                echo "     - Azure Cost Management data delay (24-48 hours)"
+                echo "     - Service principal needs 'Cost Management Reader' or 'Billing Reader' role"
+                echo "     - Resource group contains only free-tier resources"
+                echo "     - Resources were created very recently"
+                echo "     - Try running this report tomorrow for current costs"
+              fi
+              
+              # Add to CSV file with tag information
+              echo "\"$rg_name\",\"$RG_LOCATION\",\"$CURRENT_COST_FORMATTED\",\"$LAST_COST_FORMATTED\",\"$RESOURCE_COUNT\",\"$CURRENCY\",\"$COST_CENTER_CLEAN\",\"$PROJECT_OWNERS_CLEAN\",\"$AIFACTORY_PROJECT_CLEAN\"" >> "$COST_FILE"
+              
+              echo "  ✓ Added to report: Current=\$$CURRENT_COST_FORMATTED, Last=\$$LAST_COST_FORMATTED, Resources=$RESOURCE_COUNT"
+              
+            else
+              echo "  ⚠ Warning: Cannot access resource group: $rg_name"
+              echo "\"$rg_name\",\"UNKNOWN\",\"0.00\",\"0.00\",\"0\",\"USD\",\"N/A\",\"N/A\",\"N/A\"" >> "$COST_FILE"
+            fi
+            
+            echo "---"
+          fi
+        done
+      else
+        echo "No resource groups file found from discovery step"
+        exit 1
+      fi
+      
+      echo "Cost data collection completed. Results saved to: $COST_FILE"
+      echo "Sample of collected data:"
+      head -10 "$COST_FILE"
+
+- task: AzureCLI@2
+  displayName: '05a_get_agent_ip_and_update_storage_network_rules'
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnection }}
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      #!/bin/bash
+      
+      # Set environment variables for the script
+      export AIFACTORY_PREFIX_RG="$(admin_aifactoryPrefixRG)"
+      export LOCATION_SUFFIX="$(admin_locationSuffix)"
+      export AIFACTORY_SUFFIX_RG="$(admin_aifactorySuffixRG)"
+      export PROJECT_PREFIX="$(projectPrefix)"
+      export PROJECT_SUFFIX="$(projectSuffix)"
+      export ENVIRONMENT="$(dev_test_prod)"
+      export SUBSCRIPTION_ID="$(dev_test_prod_sub_id)"
+      export COMMON_LAKE_PREFIX="$(commonLakeNamePrefixMax8chars)"
+      export LAKE_CONTAINER_NAME="$(lakeContainerName)"
+      export DEPLOYMENT_RANDOM="$(deployment_random_value)"
+      export TENANT_ID="$(tenantId)"
+      
+      echo "=== Getting Build Agent IP and Updating Storage Network Rules ==="
+      echo "Subscription ID: $SUBSCRIPTION_ID"
+      echo "Tenant ID: $TENANT_ID"
+      
+      # Set the subscription context (tenant is automatically resolved by service connection)
+      az account set --subscription "$SUBSCRIPTION_ID"
+      
+      # Get the build agent's public IP address
+      BUILD_AGENT_IP=$(curl -s https://api.ipify.org)
+      if [ -z "$BUILD_AGENT_IP" ]; then
+        echo "Failed to get build agent IP address"
+        exit 1
+      fi
+      echo "Build Agent IP: $BUILD_AGENT_IP"
+      
+      # Find the data lake storage account
+      STORAGE_ACCOUNT=$(az storage account list --subscription "$SUBSCRIPTION_ID" --query "[?contains(name, '${COMMON_LAKE_PREFIX}') && contains(name, '${ENVIRONMENT}')].name" -o tsv | head -1)
+      
+      if [ -z "$STORAGE_ACCOUNT" ]; then
+        echo "No data lake storage account found with prefix: $COMMON_LAKE_PREFIX and environment: $ENVIRONMENT"
+        exit 1
+      fi
+      
+      echo "Found storage account: $STORAGE_ACCOUNT"
+      
+      # Store current network rule state for restoration later
+      CURRENT_DEFAULT_ACTION=$(az storage account show --name "$STORAGE_ACCOUNT" --subscription "$SUBSCRIPTION_ID" --query "networkRuleSet.defaultAction" -o tsv)
+      echo "Current default action: $CURRENT_DEFAULT_ACTION"
+      
+      # Save the current state to a file for later restoration
+      echo "$STORAGE_ACCOUNT" > "/tmp/storage_account_${DEPLOYMENT_RANDOM}.txt"
+      echo "$CURRENT_DEFAULT_ACTION" > "/tmp/default_action_${DEPLOYMENT_RANDOM}.txt"
+      echo "$BUILD_AGENT_IP" > "/tmp/agent_ip_${DEPLOYMENT_RANDOM}.txt"
+      
+      # Show current network rules
+      echo "Current network rule set:"
+      az storage account show --name "$STORAGE_ACCOUNT" --subscription "$SUBSCRIPTION_ID" --query "networkRuleSet" -o table
+      
+      # Add the build agent IP to the storage account firewall rules
+      echo "Adding build agent IP ($BUILD_AGENT_IP) to storage account firewall..."
+      az storage account network-rule add \
+        --account-name "$STORAGE_ACCOUNT" \
+        --subscription "$SUBSCRIPTION_ID" \
+        --ip-address "$BUILD_AGENT_IP" \
+        --resource-group "$(az storage account show --name "$STORAGE_ACCOUNT" --subscription "$SUBSCRIPTION_ID" --query "resourceGroup" -o tsv)"
+      
+      if [ $? -eq 0 ]; then
+        echo "✓ Successfully added build agent IP to storage account firewall"
+      else
+        echo "⚠ Warning: Failed to add IP rule, attempting to set default action to Allow temporarily"
+        # Fallback: temporarily allow all access
+        az storage account update \
+          --name "$STORAGE_ACCOUNT" \
+          --subscription "$SUBSCRIPTION_ID" \
+          --default-action Allow
+      fi
+      
+      # Wait a moment for the network rule to take effect
+      echo "Waiting 30 seconds for network rule changes to take effect..."
+      sleep 30
+
+- task: AzureCLI@2
+  displayName: '05b_upload_to_datalake'
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnection }}
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      #!/bin/bash
+      
+      # Set environment variables for the script
+      export AIFACTORY_PREFIX_RG="$(admin_aifactoryPrefixRG)"
+      export LOCATION_SUFFIX="$(admin_locationSuffix)"
+      export AIFACTORY_SUFFIX_RG="$(admin_aifactorySuffixRG)"
+      export PROJECT_PREFIX="$(projectPrefix)"
+      export PROJECT_SUFFIX="$(projectSuffix)"
+      export ENVIRONMENT="$(dev_test_prod)"
+      export SUBSCRIPTION_ID="$(dev_test_prod_sub_id)"
+      export COMMON_LAKE_PREFIX="$(commonLakeNamePrefixMax8chars)"
+      export LAKE_CONTAINER_NAME="$(lakeContainerName)"
+      export DEPLOYMENT_RANDOM="$(deployment_random_value)"
+      export TENANT_ID="$(tenantId)"
+      
+      echo "=== Uploading Cost Data to Data Lake ==="
+      echo "Subscription ID: $SUBSCRIPTION_ID"
+      echo "Tenant ID: $TENANT_ID"
+      echo "Data Lake Prefix: $COMMON_LAKE_PREFIX"
+      echo "Container Name: $LAKE_CONTAINER_NAME"
+      
+      # Set the subscription context (tenant is automatically resolved by service connection)
+      az account set --subscription "$SUBSCRIPTION_ID"
+      
+      # Verify we're in the correct subscription and tenant
+      CURRENT_SUB=$(az account show --query "id" -o tsv)
+      CURRENT_TENANT=$(az account show --query "tenantId" -o tsv)
+      
+      if [ "$CURRENT_SUB" != "$SUBSCRIPTION_ID" ]; then
+        echo "❌ ERROR: Failed to set correct subscription context"
+        echo "Expected: $SUBSCRIPTION_ID, Got: $CURRENT_SUB"
+        exit 1
+      fi
+      
+      echo "✓ Subscription context set correctly (Tenant: $CURRENT_TENANT)"
+      
+      # Find the data lake storage account
+      STORAGE_ACCOUNT=$(az storage account list --subscription "$SUBSCRIPTION_ID" --query "[?contains(name, '${COMMON_LAKE_PREFIX}') && contains(name, '${ENVIRONMENT}')].name" -o tsv | head -1)
+      
+      if [ -z "$STORAGE_ACCOUNT" ]; then
+        echo "No data lake storage account found with prefix: $COMMON_LAKE_PREFIX and environment: $ENVIRONMENT"
+        exit 1
+      fi
+      
+      echo "Found storage account: $STORAGE_ACCOUNT"
+      
+      # Create file name with timestamp
+      TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+      REPORT_NAME="aifactory_cross_charging_${ENVIRONMENT}_${TIMESTAMP}.csv"
+      
+      # Check if cost data file exists
+      COST_FILE="/tmp/cost_data_${DEPLOYMENT_RANDOM}.csv"
+      if [ ! -f "$COST_FILE" ]; then
+        echo "Cost data file not found: $COST_FILE"
+        exit 1
+      fi
+      
+      # Upload to data lake
+      echo "Uploading cost data to storage account: $STORAGE_ACCOUNT"
+      
+      # Try primary container first
+      echo "Attempting upload to primary container: $LAKE_CONTAINER_NAME"
+      UPLOAD_RESULT=$(az storage blob upload \
+        --account-name "$STORAGE_ACCOUNT" \
+        --container-name "$LAKE_CONTAINER_NAME" \
+        --name "cross-charging/$REPORT_NAME" \
+        --file "$COST_FILE" \
+        --auth-mode login 2>&1)
+      
+      UPLOAD_EXIT_CODE=$?
+      
+      if [ $UPLOAD_EXIT_CODE -eq 0 ]; then
+        echo "✓ Upload completed successfully to primary container: cross-charging/$REPORT_NAME"
+        
+        # Verify the file was actually uploaded
+        BLOB_EXISTS=$(az storage blob exists \
+          --account-name "$STORAGE_ACCOUNT" \
+          --container-name "$LAKE_CONTAINER_NAME" \
+          --name "cross-charging/$REPORT_NAME" \
+          --auth-mode login \
+          --query "exists" -o tsv 2>/dev/null)
+        
+        if [ "$BLOB_EXISTS" = "true" ]; then
+          echo "✓ Upload verified: File exists in primary container ($LAKE_CONTAINER_NAME)"
+        else
+          echo "⚠ WARNING: Upload reported success but file verification failed in primary container"
+        fi
+      else
+        echo "❌ ERROR: Upload failed to primary container ($LAKE_CONTAINER_NAME) with exit code $UPLOAD_EXIT_CODE"
+        echo "Primary container error: $UPLOAD_RESULT"
+        
+        # Try fallback container
+        FALLBACK_CONTAINER="aifactory-gov"
+        echo ""
+        echo "🔄 Trying fallback container: $FALLBACK_CONTAINER"
+        
+        FALLBACK_UPLOAD_RESULT=$(az storage blob upload \
+          --account-name "$STORAGE_ACCOUNT" \
+          --container-name "$FALLBACK_CONTAINER" \
+          --name "cross-charging/$REPORT_NAME" \
+          --file "$COST_FILE" \
+          --auth-mode login 2>&1)
+        
+        FALLBACK_EXIT_CODE=$?
+        
+        if [ $FALLBACK_EXIT_CODE -eq 0 ]; then
+          echo "✓ Upload completed successfully to fallback container: $FALLBACK_CONTAINER/cross-charging/$REPORT_NAME"
+          
+          # Verify the fallback upload
+          FALLBACK_BLOB_EXISTS=$(az storage blob exists \
+            --account-name "$STORAGE_ACCOUNT" \
+            --container-name "$FALLBACK_CONTAINER" \
+            --name "cross-charging/$REPORT_NAME" \
+            --auth-mode login \
+            --query "exists" -o tsv 2>/dev/null)
+          
+          if [ "$FALLBACK_BLOB_EXISTS" = "true" ]; then
+            echo "✓ Fallback upload verified: File exists in container ($FALLBACK_CONTAINER)"
+          else
+            echo "⚠ WARNING: Fallback upload reported success but file verification failed"
+          fi
+        else
+          echo "❌ ERROR: Upload failed to both primary ($LAKE_CONTAINER_NAME) and fallback ($FALLBACK_CONTAINER) containers"
+          echo "Fallback container error: $FALLBACK_UPLOAD_RESULT"
+          
+          # Check if it's a network rule issue
+          if echo "$UPLOAD_RESULT $FALLBACK_UPLOAD_RESULT" | grep -q "network rules\|NetworkRuleSet\|blocked by network"; then
+            echo ""
+            echo "💡 This appears to be a network access issue. Possible solutions:"
+            echo "   1. Check if the build agent IP was properly added to storage firewall"
+            echo "   2. Verify storage account network rules allow the build agent"
+            echo "   3. Consider temporarily setting storage default action to 'Allow'"
+            echo ""
+            
+            # Show current network rules for debugging
+            echo "Current storage account network rules:"
+            az storage account show --name "$STORAGE_ACCOUNT" --subscription "$SUBSCRIPTION_ID" --query "networkRuleSet" -o table 2>/dev/null || echo "Unable to retrieve network rules"
+          fi
+          
+          exit 1
+        fi
+      fi
+
+- task: AzureCLI@2
+  displayName: '06_send_email_notifications'
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnection }}
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      #!/bin/bash
+      
+      # Set environment variables for the script
+      export AIFACTORY_PREFIX_RG="$(admin_aifactoryPrefixRG)"
+      export LOCATION_SUFFIX="$(admin_locationSuffix)"
+      export AIFACTORY_SUFFIX_RG="$(admin_aifactorySuffixRG)"
+      export PROJECT_PREFIX="$(projectPrefix)"
+      export PROJECT_SUFFIX="$(projectSuffix)"
+      export ENVIRONMENT="$(dev_test_prod)"
+      export SUBSCRIPTION_ID="$(dev_test_prod_sub_id)"
+      export COMMON_LAKE_PREFIX="$(commonLakeNamePrefixMax8chars)"
+      export LAKE_CONTAINER_NAME="$(lakeContainerName)"
+      export DEPLOYMENT_RANDOM="$(deployment_random_value)"
+      export TECHNICAL_ADMINS_EMAIL="$(technical_admins_email)"
+      export TENANT_ID="$(tenantId)"
+      
+      echo "=== Sending Email Notifications ==="
+      echo "Environment: $ENVIRONMENT"
+      echo "Subscription ID: $SUBSCRIPTION_ID"
+      echo "Tenant ID: $TENANT_ID"
+      echo "Notification recipients: $TECHNICAL_ADMINS_EMAIL"
+      
+      # Set the subscription context (tenant is automatically resolved by service connection)
+      az account set --subscription "$SUBSCRIPTION_ID"
+      
+      # Check if cost data file exists
+      COST_FILE="/tmp/cost_data_${DEPLOYMENT_RANDOM}.csv"
+      if [ ! -f "$COST_FILE" ]; then
+        echo "Cost data file not found: $COST_FILE"
+        exit 1
+      fi
+      
+      # Get summary statistics
+      TOTAL_RESOURCES=$(tail -n +2 "$COST_FILE" | wc -l)
+      TOTAL_RGS=$(tail -n +2 "$COST_FILE" | cut -d',' -f1 | sort -u | wc -l)
+      TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S UTC")
+      
+      # Create email content
+      EMAIL_SUBJECT="AI Factory Cross-Charging Report - $ENVIRONMENT Environment - $TIMESTAMP"
+      
+      # Create email body using concatenation to avoid YAML parsing issues
+      EMAIL_BODY="AI Factory Cross-Charging Report Generated\n\n"
+      EMAIL_BODY+="Environment: $ENVIRONMENT\n"
+      EMAIL_BODY+="Subscription ID: $SUBSCRIPTION_ID\n"
+      EMAIL_BODY+="Report Generation Time: $TIMESTAMP\n\n"
+      EMAIL_BODY+="Summary:\n"
+      EMAIL_BODY+="- Total Resource Groups: $TOTAL_RGS\n"
+      EMAIL_BODY+="- Total Resources: $TOTAL_RESOURCES\n"
+      EMAIL_BODY+="- AI Factory Prefix: $AIFACTORY_PREFIX_RG\n"
+      EMAIL_BODY+="- AI Factory Suffix: $AIFACTORY_SUFFIX_RG\n\n"
+      EMAIL_BODY+="The detailed cost report has been uploaded to the data lake storage account.\n"
+      EMAIL_BODY+="Container: $LAKE_CONTAINER_NAME\n"
+      EMAIL_BODY+="Path: cross-charging/\n\n"
+      EMAIL_BODY+="This is an automated report generated by the AI Factory governance pipeline."
+      
+      echo "Email notification prepared:"
+      echo "Subject: $EMAIL_SUBJECT"
+      echo "Recipients: $TECHNICAL_ADMINS_EMAIL"
+      echo "Summary: $TOTAL_RGS resource groups, $TOTAL_RESOURCES resources"
+      
+      # Note: Actual email sending would require Logic Apps or other email service integration
+      echo "Email notification completed (logged for manual review)"
+
+- task: AzureCLI@2
+  displayName: '07a_restore_storage_network_rules'
+  condition: always()
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnection }}
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      #!/bin/bash
+      
+      # Set environment variables for the script
+      export SUBSCRIPTION_ID="$(dev_test_prod_sub_id)"
+      export DEPLOYMENT_RANDOM="$(deployment_random_value)"
+      export TENANT_ID="$(tenantId)"
+      
+      echo "=== Restoring Storage Account Network Rules ==="
+      echo "Subscription ID: $SUBSCRIPTION_ID"
+      echo "Tenant ID: $TENANT_ID"
+      
+      # Set the subscription context (tenant is automatically resolved by service connection)
+      az account set --subscription "$SUBSCRIPTION_ID"
+      
+      # Check if we have the storage account information from the previous step
+      if [ -f "/tmp/storage_account_${DEPLOYMENT_RANDOM}.txt" ] && [ -f "/tmp/agent_ip_${DEPLOYMENT_RANDOM}.txt" ]; then
+        STORAGE_ACCOUNT=$(cat "/tmp/storage_account_${DEPLOYMENT_RANDOM}.txt")
+        BUILD_AGENT_IP=$(cat "/tmp/agent_ip_${DEPLOYMENT_RANDOM}.txt")
+        
+        if [ -f "/tmp/default_action_${DEPLOYMENT_RANDOM}.txt" ]; then
+          ORIGINAL_DEFAULT_ACTION=$(cat "/tmp/default_action_${DEPLOYMENT_RANDOM}.txt")
+        else
+          ORIGINAL_DEFAULT_ACTION="Deny"
+        fi
+        
+        echo "Storage Account: $STORAGE_ACCOUNT"
+        echo "Build Agent IP to remove: $BUILD_AGENT_IP"
+        echo "Original Default Action: $ORIGINAL_DEFAULT_ACTION"
+        
+        # Remove the build agent IP from the storage account firewall rules
+        echo "Removing build agent IP ($BUILD_AGENT_IP) from storage account firewall..."
+        az storage account network-rule remove \
+          --account-name "$STORAGE_ACCOUNT" \
+          --subscription "$SUBSCRIPTION_ID" \
+          --ip-address "$BUILD_AGENT_IP" \
+          --resource-group "$(az storage account show --name "$STORAGE_ACCOUNT" --subscription "$SUBSCRIPTION_ID" --query "resourceGroup" -o tsv)" 2>/dev/null
+        
+        if [ $? -eq 0 ]; then
+          echo "✓ Successfully removed build agent IP from storage account firewall"
+        else
+          echo "⚠ Warning: Failed to remove IP rule (may not exist)"
+        fi
+        
+        # Restore the original default action if it was changed
+        if [ "$ORIGINAL_DEFAULT_ACTION" != "Allow" ]; then
+          echo "Restoring original default action: $ORIGINAL_DEFAULT_ACTION"
+          az storage account update \
+            --name "$STORAGE_ACCOUNT" \
+            --subscription "$SUBSCRIPTION_ID" \
+            --default-action "$ORIGINAL_DEFAULT_ACTION"
+          
+          if [ $? -eq 0 ]; then
+            echo "✓ Successfully restored original default action"
+          else
+            echo "⚠ Warning: Failed to restore original default action"
+          fi
+        fi
+        
+        echo "Storage account network rules restoration completed"
+      else
+        echo "No storage account information found - skipping network rule restoration"
+      fi
+
+- task: AzureCLI@2
+  displayName: '07b_cleanup_temp_files'
+  condition: always()
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnection }}
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      #!/bin/bash
+      export DEPLOYMENT_RANDOM="$(deployment_random_value)"
+      
+      echo "Cleaning up temporary files..."
+      rm -f /tmp/resource_groups_*.txt
+      rm -f /tmp/cost_data_*.csv
+      rm -f /tmp/aifactory_cross_charging_*.csv
+      rm -f "/tmp/storage_account_${DEPLOYMENT_RANDOM}.txt"
+      rm -f "/tmp/default_action_${DEPLOYMENT_RANDOM}.txt"
+      rm -f "/tmp/agent_ip_${DEPLOYMENT_RANDOM}.txt"
+      echo "Cleanup completed"

@@ -1,121 +1,180 @@
-trigger:
-  branches:
-    include:
-      - release/project*
-variables:
-- template: ../variables/variables.yaml
-- name: runNetworkingVar
-  value: true
+#
+#Dev_GenAI_Project:
+#✅ Runs automatically on CI triggers (release/project* branches) if you uncomment code, and remove "none" value
+#✅ Runs on manual triggers
+#
+#Stage_GenAI_Project:
+#❌ Never runs automatically - requires manual trigger
+#✅ Only runs when manually triggered AND Dev succeeded
+#✅ Can be manually triggered from any branch (no branch restrictions)
+#
+#Prod_GenAI_Project:
+#❌ Never runs automatically - requires manual trigger
+#✅ Only runs when manually triggered AND (Stage succeeded/skipped OR Dev succeeded)
+#✅ Can be manually triggered from any branch
 
+trigger: none
+  # branches:
+    # include:
+      # - release/project*
+variables:
+  - template: ../variables/variables.yaml
 stages:
 - stage: Dev_GenAI_Project
   displayName: Dev GenAI Project
   variables:
     dev_test_prod: "dev"
     dev_test_prod_sub_id: "$(dev_sub_id)"
-    admin_projectType: "genai-1"
+    network_env: "$(network_env_dev)"
+    admin_bicep_input_keyvault_subscription: "$(dev_admin_bicep_input_keyvault_subscription)"
+    admin_bicep_kv_fw_rg: "$(dev_admin_bicep_kv_fw_rg)"
+    admin_bicep_kv_fw: "$(dev_admin_bicep_kv_fw)"
   jobs:
     - deployment: ESGenAI_Networking
-      condition: eq(variables['runNetworkingVar'], 'true')
+      # Skip networking job in ULTRA mode (deleteAllForProject=true) — the project RG is being torn down,
+      # so deploying/maintaining the private network is pointless.
+      condition: and(eq(variables['runNetworkingVar'], 'true'),eq(variables['BYO_subnets'], 'false'),ne(variables['deleteAllServicesForProject'], 'true'),ne(variables['deleteAllForProject'], 'true'))
       displayName: Deploy Private Network
+      timeoutInMinutes: 120
       pool:
-        vmImage: windows-latest
+        vmImage: windows-2022
       environment: Dev  
       strategy:
         runOnce:
           deploy:
             steps:
+              - checkout: self
+                submodules: recursive
+                fetchDepth: 0
+                displayName: 'Checkout with submodules'
               - template: ./jobs/job-1-genai-networking.yaml
                 parameters:
                   serviceConnection: ${{ variables.dev_service_connection }}
                   serviceConnectionSeeding: ${{ variables.dev_seeding_kv_service_connection }}
     - deployment: ESGenAI_Services
-      condition: or(succeeded(), eq(variables['runNetworkingVar'], 'false'))
+      condition: or(in(dependencies.ESGenAI_Networking.result, 'Succeeded', 'Skipped'), eq(variables['runNetworkingVar'], 'false'), eq(variables['BYO_subnets'], 'true'))
       dependsOn: ESGenAI_Networking
       displayName: Deploy GenAI services,Personas,RBAC,ACL,CAF & WAF Policys
+      timeoutInMinutes: 240  # Increased timeout to accommodate retries
       pool:
-        vmImage: windows-latest
+        vmImage: windows-2022
       environment: Dev  
       strategy:
         runOnce:
           deploy:
             steps:
+              - checkout: self
+                submodules: recursive
+                fetchDepth: 0
+                displayName: 'Checkout with submodules'
               - template: ./jobs/job-2-genai-services.yaml
                 parameters:
                   serviceConnection: ${{ variables.dev_service_connection }}
                   serviceConnectionSeeding: ${{ variables.dev_seeding_kv_service_connection }}
 - stage: Stage_GenAI_Project
   displayName: Stage GenAI Project
+  condition: and(eq(variables['Build.Reason'], 'Manual'), in(dependencies.Dev_GenAI_Project.result, 'Succeeded'))
+  dependsOn: Dev_GenAI_Project
   variables:
     dev_test_prod: "test"
     dev_test_prod_sub_id: "$(test_sub_id)"
-    admin_projectType: "genai-1"
+    network_env: "$(network_env_stage)"
+    admin_bicep_input_keyvault_subscription: "$(test_admin_bicep_input_keyvault_subscription)"
+    admin_bicep_kv_fw_rg: "$(test_admin_bicep_kv_fw_rg)"
+    admin_bicep_kv_fw: "$(test_admin_bicep_kv_fw)"
   jobs:
     - deployment: ESGenAI_Networking
-      condition: eq(variables['runNetworkingVar'], 'true')
+      # Skip networking job in ULTRA mode (deleteAllForProject=true) — the project RG is being torn down,
+      # so deploying/maintaining the private network is pointless.
+      condition: and(eq(variables['runNetworkingVar'], 'true'),eq(variables['BYO_subnets'], 'false'),ne(variables['deleteAllServicesForProject'], 'true'),ne(variables['deleteAllForProject'], 'true'))
       displayName: Deploy Private Network
+      timeoutInMinutes: 240
       pool:
-        vmImage: windows-latest
-      environment: Stage  
+        vmImage: windows-2022
+      environment: Stage
       strategy:
         runOnce:
           deploy:
             steps:
+              - checkout: self
+                submodules: recursive
+                fetchDepth: 0
+                displayName: 'Checkout with submodules'
               - template: ./jobs/job-1-genai-networking.yaml
                 parameters:
                   serviceConnection: ${{ variables.test_service_connection }}
                   serviceConnectionSeeding: ${{ variables.test_seeding_kv_service_connection }}
     - deployment: ESGenAI_Services
-      condition: or(succeeded(), eq(variables['runNetworkingVar'], 'false'))
+      condition: or(in(dependencies.ESGenAI_Networking.result, 'Succeeded', 'Skipped'), eq(variables['runNetworkingVar'], 'false'), eq(variables['BYO_subnets'], 'true'))
       dependsOn: ESGenAI_Networking
       displayName: Deploy GenAI services,Personas,RBAC,ACL,CAF & WAF Policys
+      timeoutInMinutes: 240  # Increased timeout to accommodate retries
       pool:
-        vmImage: windows-latest
+        vmImage: windows-2022
       environment: Stage  
       strategy:
         runOnce:
           deploy:
             steps:
+              - checkout: self
+                submodules: recursive
+                fetchDepth: 0
+                displayName: 'Checkout with submodules'
               - template: ./jobs/job-2-genai-services.yaml
                 parameters:
                   serviceConnection: ${{ variables.test_service_connection }}
                   serviceConnectionSeeding: ${{ variables.test_seeding_kv_service_connection }}
 - stage: Prod_GenAI_Project
   displayName: Prod GenAI Project
+  condition: and(eq(variables['Build.Reason'], 'Manual'), or(in(dependencies.Stage_GenAI_Project.result, 'Succeeded', 'Skipped'), in(dependencies.Dev_GenAI_Project.result, 'Succeeded')))
+  dependsOn: 
+    - Stage_GenAI_Project
+    - Dev_GenAI_Project
   variables:
     dev_test_prod: "prod"
     dev_test_prod_sub_id: "$(prod_sub_id)"
-    admin_projectType: "genai-1"
+    network_env: "$(network_env_prod)"
+    admin_bicep_input_keyvault_subscription: "$(prod_admin_bicep_input_keyvault_subscription)"
+    admin_bicep_kv_fw_rg: "$(prod_admin_bicep_kv_fw_rg)"
+    admin_bicep_kv_fw: "$(prod_admin_bicep_kv_fw)"
   jobs:
     - deployment: ESGenAI_Networking
-      condition: eq(variables['runNetworkingVar'], 'true')
+      # Skip networking job in ULTRA mode (deleteAllForProject=true) — the project RG is being torn down,
+      # so deploying/maintaining the private network is pointless.
+      condition: and(eq(variables['runNetworkingVar'], 'true'),eq(variables['BYO_subnets'], 'false'),ne(variables['deleteAllServicesForProject'], 'true'),ne(variables['deleteAllForProject'], 'true'))
       displayName: Deploy Private Network
+      timeoutInMinutes: 120
       pool:
-        vmImage: windows-latest
-      environment: Prod  
+        vmImage: windows-2022
+      environment: Prod
       strategy:
         runOnce:
           deploy:
             steps:
+              - checkout: self
+                submodules: recursive
+                fetchDepth: 0
+                displayName: 'Checkout with submodules'
               - template: ./jobs/job-1-genai-networking.yaml
                 parameters:
                   serviceConnection: ${{ variables.prod_service_connection }}
                   serviceConnectionSeeding: ${{ variables.prod_seeding_kv_service_connection }}
     - deployment: ESGenAI_Services
-      condition: or(succeeded(), eq(variables['runNetworkingVar'], 'false'))
+      condition: or(in(dependencies.ESGenAI_Networking.result, 'Succeeded', 'Skipped'), eq(variables['runNetworkingVar'], 'false'), eq(variables['BYO_subnets'], 'true'))
       dependsOn: ESGenAI_Networking
       displayName: Deploy GenAI services,Personas,RBAC,ACL,CAF & WAF Policys
+      timeoutInMinutes: 240  # Increased timeout to accommodate retries
       pool:
-        vmImage: windows-latest
+        vmImage: windows-2022
       environment: Prod
-      variables:
-        dev_test_prod: "prod"
-        dev_test_prod_sub_id: "$(prod_sub_id)"
-        admin_projectType: "genai-1"
       strategy:
         runOnce:
           deploy:
             steps:
+              - checkout: self
+                submodules: recursive
+                fetchDepth: 0
+                displayName: 'Checkout with submodules'
               - template: ./jobs/job-2-genai-services.yaml
                 parameters:
                   serviceConnection: ${{ variables.prod_service_connection }}
