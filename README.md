@@ -2,11 +2,57 @@
 
 ![Header](documentation/images/header.png)
 
-Welcome to the official *Enterprise Scale AIFactory* solution accelerator template. <br>
+Welcome to the official Enterprise Scale AIFactory solution accelerator template.
+
+## What is the AI Factory?[¶](https://jostrm.github.io/azure-enterprise-scale-ml/#what-is-the-ai-factory)
+The **Enterprise Scale AI Factory** is a plug-and-play solution that automates the provisioning, deployment, and management of AI projects on Azure using a template-driven approach.
+
+- **AI-ready landing zones** with templates for DataOps, MLOps, and GenAIOps.
+- **Automatically deploys 1–35 Azure services** in a WAF-aligned application landing zone. It supports the full AI spectrum — generative AI, deep learning, machine learning, and traditional application development: AI Foundry, Azure Machine Learning, Databricks, AI Search, AKS, Logic Apps, Container Apps, Azure Functions, PostgreSQL, SQL Database, and more.
+- **Add or remove services** at any time via feature flags — all wired up with private networking, RBAC, and monitoring automatically is created or cleaned up when removing resource.
+- Supports both **GitHub Actions** and **Azure DevOps** as orchestrators.
+
+> [!NOTE]
+> Since the Well-Architected Framework does not recommend using Azure Developer CLI (`azd`) for production, this project uses GA `Azure CLI` with orchestrator pipelines in GitHub Actions or Azure DevOps Pipelines.
+
+---
+
+## Main Purpose[¶](https://jostrm.github.io/azure-enterprise-scale-ml/#main-purpose)
+
+1. **Marry multiple best practices**: Secure Enterprise Scale AI Landing Zones + Secure GenAIOps/MLOps templates — GenAIOps templates built on unsecured infrastructure are incompatible with private-endpoint-based infra, so the two are designed together here.
+2. **Plug-and-play**: Dynamically creates infra resources per team, including subnet/IP calculation, private networking, RBAC, and ACL permissions on the data lake — fully automated.
+3. **Template-based project delivery**: Project-based structure (cost control, privacy, scalability) with ready-made templates for DataLake, DataOps, MLOps, and GenAIOps.
+4. **Enterprise scale, security, and battle-tested**: Used by customers and partners with MLOps and GenAIOps since 2019.
+5. **Intelligent CRUD for 30+ Azure resources**: Enable and disable feature flags to add or safely remove resources. The AI Factory's internal dependency graph ensures that services are created, updated, and deleted in the correct order — including proper cleanup — without breaking dependent resources.
+6. **Turn-key Enterprise Scale Data Lake with Datamesh**: A structured, permission-layered data lake is provisioned automatically, with per-project ACL isolation and Datamesh-ready design, to marry data management with AI workloads.
+7. **Flexible with 10+ BYO concepts**: Bring Your Own IaC (Bicep, Terraform, ARM) on top of the AI Factory pipelines; BYO networking (VNet, subnets, routing tables); BYO Data Lake; BYO App Service Environment; BYO encryption key (CMK) — all configurable via a handful of parameters.
+
+---
+
+## AI factory AI Application Landingzones: CONCEPTS & DESIGN: Differentiators?[¶](https://jostrm.github.io/azure-enterprise-scale-ml/#ai-factory-ai-application-landingzones-concepts-design-differentiators)
+
+- The AI Factory wraps multiple environments together: Dev, Stage, Prod, per team, called `AI Factory project`.
+- The AI Factory sets up 1 to 3 AI Application Landing Zones per `AI Factory project` and `project team` (a team assigned to a project)
+- The AI Factory scales with Azure Subscriptions, called `AI Factory scale sets`, each team their own scaleset (3 Subscriptions = Application Landingzones)
+- Each AI Factory project (landingzone) is divided in two parts: COMMON & PROJECT specific, on resource group level - since required to align with WAF & CAF:
+  - `WAF Cost optimization`: Reuse networking and common artifacts, across services in an architecture used by the `use case` and team
+  - `WAF Security`: `Least privileged access` since the end-users does not need to have access on certain networking resources and other artifacts. `Granular security`
+  - `Operations`: `Reusing` common artifacts also makes it easier to operate, such as `Centralized Monitoring & Logging`, `Common security` separated from granular `Role Specific Access`.
+- See full [Documentation](https://github.com/jostrm/azure-enterprise-scale-ml/blob/main/documentation/v2/10_index.md) for more info
+
+- The AI Factory is designed, with its own compatible TEMPLATES for DataOps, MLOps, GenAIOps ( to avoid the challenges of incompatible security, etc)
+- Each `AI Factory project` can `add or remove +34 Azure services` - e.g. Not only the GenAI part of a solution, but also to avoid the challenges of incompatible security with ease and full automation of creating an End-2-End solution with 100% private networking for:
+  - Full AI: Both GenAI (Foundry) and Machine Learning (Azure Machine Learning, Azure Databricks)
+  - Front-End (UI, Caching)
+  - Back-End (Databases)
+  - Integration (LogicApps, APIM, Eventhubs)
+  - Soveregnity: On-premises link via Azure Arc to Azure Machine Learning, Kubernetes, for Sovereign Cloud purposes.
+
+---
+
 This is a template repository, bootstrapped with the *Enterprise Scale AIFactory submodule* (the most common way of leveraging the AIFactory template acceleration)
 
-This repo will leverages resources/templates from the [`Enterprise Scale AI Factory submodule`](https://github.com/jostrm/azure-enterprise-scale-ml/) including templates for `IaC AI landingzones, DataOps, MLOps, 
-GenAIOps`.
+This repo will leverages resources/templates from the [`Enterprise Scale AI Factory submodule`](https://github.com/jostrm/azure-enterprise-scale-ml/) including templates for `IaC AI landingzones, DataOps, MLOps, GenAIOps`.
 
 The mirror repo based on this repo, will act as your repo with options as: [Github private, internal, public repo](https://resources.github.com/learn/pathways/administration-governance/essentials/manage-your-repository-visibility-rules-and-settings/), or a [private or public Azure Devops repository](https://learn.microsoft.com/en-us/azure/devops/organizations/projects/make-project-public?view=azure-devops)
 
@@ -79,6 +125,7 @@ Please visit the full documentation for here. [Enterprise Scale AI Factory - Set
 
 ## How to create more projects of different types? 
 As explained in previous section you will end up with automation pipelines, in either your own Azure Devops (as Release pipelines) or your own Github repositories (as Actions/Workflows).
+You can have 1 or 26 Azure PaaS resources, simply *enable* them in Variables.yaml or .env for Github, or use the AI Factory configuration wizard with checkboxes.
 
 The pipelines, can be executed multiple times, to provision multiple AIFactory projects. 
 You only need to change a few parameters in the .env file, and run [02b-GH-create-or-update-github-variables.sh](./02b-GH-create-or-update-github-variables.sh) - values such as below:
@@ -86,7 +133,11 @@ You only need to change a few parameters in the .env file, and run [02b-GH-creat
 
 PROJECT_NUMBER="001" # <XXX> unique string per aifactory, usually 001,002,003
 PROJECT_MEMBERS="qwer123-qwer-wrfe-23fd-asdfqewrt,asdfg-qwer-asdf-23fd-asdf1234" #[GH-Secret] ObjectID in a commas separated list, without space
-PROJECT_TYPE="genai-1" # What project type to deploy? [esml,genai-1,genai-2]
+ENABLE_AI_SEARCH="true"
+ENABLE_AZURE_MACHINE_LEARNING="true"
+
+...
+
 
 ```
 
