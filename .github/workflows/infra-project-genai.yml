@@ -104,14 +104,14 @@ jobs:
       run: |
         pwsh -Command "Install-Module -Name PowerShellGet -Force -AllowClobber"
     - name: Azure Login
-      uses: azure/login@v2
+      uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2.3.1
       if: env.ENABLE_NETWORKING_JOB  != 'false'
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
         enable-AzPSSession: true
     - name: GIT
       if: env.ENABLE_NETWORKING_JOB  != 'false'
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       with:
         submodules: true
     - name: 01_pwsh_get_IP_for_GH_runner
@@ -127,7 +127,7 @@ jobs:
         echo "The value of runner_ip is: ${{ env.runner_ip }}"
     - name: 02_az_set_ip_to_seeding_keyvault_FW_whitelist
       if: env.ENABLE_NETWORKING_JOB  != 'false'
-      uses: azure/cli@v2
+      uses: azure/cli@9f7ce6f37c31b777ec6c6b6d1dfe7db79f497956 # v2.2.0
       with:
         inlineScript: |
           az account set --subscription ${{ env.admin_bicep_input_keyvault_subscription }}
@@ -135,7 +135,7 @@ jobs:
         azcliversion: latest
     - name: 03_az_download_seeding_keyvault
       if: env.ENABLE_NETWORKING_JOB  != 'false'
-      uses: azure/cli@v2
+      uses: azure/cli@9f7ce6f37c31b777ec6c6b6d1dfe7db79f497956 # v2.2.0
       with:
         inlineScript: |
           az account set --subscription ${{ env.admin_bicep_input_keyvault_subscription }}
@@ -156,7 +156,7 @@ jobs:
       shell: pwsh
     - name: 04B_pwsh_calculate_subnet_allocations
       if: env.ENABLE_NETWORKING_JOB  != 'false' && env.ENABLE_DEBUG_STEP == 'true'
-      uses: azure/powershell@v2
+      uses: azure/powershell@53dd145408794f7e80f97cfcca04155c85234709 # v2.0.0
       #working-directory: "${{ github.workspace }}/azure-enterprise-scale-ml/environment_setup/aifactory/bicep/scripts/"
       with: # Warning: Unexpected input(s) 'working-directory', valid inputs are ['inlineScript', 'azcliversion'] Solution: Set-Location -Path
         inlineScript: |
@@ -167,7 +167,7 @@ jobs:
         azPSVersion: latest
     - name: 05_az_bicep_deploy_subnets_and_NSGs
       if: env.ENABLE_NETWORKING_JOB  != 'false'
-      uses: azure/cli@v2
+      uses: azure/cli@9f7ce6f37c31b777ec6c6b6d1dfe7db79f497956 # v2.2.0
       with: 
         #working-directory: "${{ github.workspace }}/azure-enterprise-scale-ml/environment_setup/aifactory/bicep/"
         inlineScript: |
@@ -189,7 +189,7 @@ jobs:
         azcliversion: latest
     - name: 06_az_remove_ip_from_seeding_keyvault_FW_whitelist
       if: env.ENABLE_NETWORKING_JOB  != 'false'
-      uses: azure/cli@v2
+      uses: azure/cli@9f7ce6f37c31b777ec6c6b6d1dfe7db79f497956 # v2.2.0
       with:
         inlineScript: | 
           az account set --subscription ${{ env.admin_bicep_input_keyvault_subscription }}        
@@ -217,12 +217,12 @@ jobs:
           echo "The value of env.ENABLE_NETWORKING_JOB  is: ${{ env.ENABLE_NETWORKING_JOB }}"
           echo "The value of env.admin_aks_version_override  is: ${{ env.admin_aks_version_override }}"
       - name: Azure Login
-        uses: azure/login@v2
+        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2.3.1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
           enable-AzPSSession: true
       - name: GIT
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           submodules: true
       - name: 01_pwsh_get_IP_for_GH_runner
@@ -235,14 +235,14 @@ jobs:
         run: |
           echo "The value of runner_ip is $runner_ip"
       - name: 02_az_set_ip_to_seeding_keyvault_FW_whitelist
-        uses: azure/cli@v2
+        uses: azure/cli@9f7ce6f37c31b777ec6c6b6d1dfe7db79f497956 # v2.2.0
         with:
           inlineScript: |
             az account set --subscription ${{ env.admin_bicep_input_keyvault_subscription }}
             az keyvault network-rule add --resource-group ${{ env.admin_bicep_kv_fw_rg }} --name ${{ env.admin_bicep_kv_fw }} --ip-address $runner_ip
           azcliversion: latest
       - name: 03_az_download_seeding_keyvault
-        uses: azure/cli@v2
+        uses: azure/cli@9f7ce6f37c31b777ec6c6b6d1dfe7db79f497956 # v2.2.0
         with:
           inlineScript: |
             az account set --subscription ${{ env.admin_bicep_input_keyvault_subscription }}
@@ -311,7 +311,7 @@ jobs:
                 }
             }'
       - name: 05_az_bicep_deploy_genai_project
-        uses: azure/cli@v2
+        uses: azure/cli@9f7ce6f37c31b777ec6c6b6d1dfe7db79f497956 # v2.2.0
         with:
           #working-directory: "${{ github.workspace }}/azure-enterprise-scale-ml/environment_setup/aifactory/bicep/"
           inlineScript: |
@@ -370,7 +370,7 @@ jobs:
             --parameters tenantId="${{ env.tenantId }}"
           azcliversion: latest
       - name: 06_az_remove_ip_from_seeding_keyvault_FW_whitelist
-        uses: azure/cli@v2
+        uses: azure/cli@9f7ce6f37c31b777ec6c6b6d1dfe7db79f497956 # v2.2.0
         with:
           inlineScript: | 
             az account set --subscription ${{ env.admin_bicep_input_keyvault_subscription }}
