@@ -83,6 +83,12 @@ celerybeat-schedule
 
 # Environments
 .env
+.env.*
+!.env.template
+.bootstrap-mirror-*/
+.bootstrap-test-*/
+.aifactory-backups/
+.consumer-test-work/
 .venv
 env/
 venv/
@@ -120,4 +126,3 @@ temp_data/
 *.parquet
 02_update_templates_QUICK.ipynb
 01_init_templates_ALL.ipynb
-
