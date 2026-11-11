@@ -19,6 +19,18 @@ IMAGE_ROOT = (
 
 
 class ReleaseContractTests(unittest.TestCase):
+    def test_setup_pages_link_to_full_release_guide(self):
+        link = (
+            "[Full setup & usage guide]"
+            "(https://github.com/jostrm/azure-enterprise-scale-ml/blob/"
+            "release/v1.25/documentation/v2/20-29/24-end-2-end-setup.md)"
+        )
+        for relative in ("README.md", "documentation/bootstrapping.md"):
+            with self.subTest(page=relative):
+                text = (ROOT / relative).read_text(encoding="utf-8")
+                self.assertIn(link, text)
+                self.assertLess(text.index(link), text.index("## "))
+
     def test_registered_only_onboarding_contract(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         notes = (ROOT / "bootstrap/release-notes.txt").read_text(encoding="utf-8")
