@@ -37,15 +37,15 @@ jobs:
         dev_test_prod_sub_id: "a1234567-xxxx-xxxx-xxxx-xxxxxxxxxxxx" # Subscription ID of the deployed resources for the environment
       steps:
       - name: Azure Login
-        uses: azure/login@v2
+        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2.3.1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
       - name: GIT
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           submodules: true
       - name: 10_Get ADO IP for agent
-        uses: azure/powershell@v2
+        uses: azure/powershell@53dd145408794f7e80f97cfcca04155c85234709 # v2.0.0
         with:
           inlineScript: |
             $resp = $resp = Invoke-RestMethod http://ipinfo.io/json | Select -exp ip
@@ -55,12 +55,12 @@ jobs:
                     Write-Host ipAddr is: ${{ env.admin_ip_fw }}
           azPSVersion: latest
       - name: 10_Set ADO IP to keyvault FW whitelist
-        uses: azure/cli@v2
+        uses: azure/cli@9f7ce6f37c31b777ec6c6b6d1dfe7db79f497956 # v2.2.0
         with:
           inlineScript: az keyvault network-rule add --subscription ${{ env.admin_seeding_keyvault_subscription }} --resource-group ${{ env.admin_seeding_keyvault_rg }} --name ${{ env.admin_seeding_keyvault }} --ip-address ${{ env.admin_ip_fw }}
           azcliversion: latest
       - name: 11_Set ADO IP to storage FW whitelist
-        uses: azure/cli@v2
+        uses: azure/cli@9f7ce6f37c31b777ec6c6b6d1dfe7db79f497956 # v2.2.0
         with:
           inlineScript: |
             commonRGNamePrefix=${{ env.admin_rg_name_prefix }}
@@ -71,7 +71,7 @@ jobs:
             storage_account=${{ env.admin_storage_account }}
             az storage account network-rule add --subscription ${{ env.dev_test_prod_sub_id }} --resource-group $common_rg --account-name $storage_account --ip-address ${{ env.admin_ip_fw }}
       - name: 10_download_keyvault_secrets
-        uses: azure/cli@v2
+        uses: azure/cli@9f7ce6f37c31b777ec6c6b6d1dfe7db79f497956 # v2.2.0
         with:
           inlineScript: |
             echo "esml-common-bicep-sp-id=$(az keyvault secret show --subscription ${{ env.admin_seeding_keyvault_subscription }} --vault-name ${{ env.admin_seeding_keyvault }} --name 'esml-common-bicep-sp-id' --query 'value' --output tsv)" >> $GITHUB_ENV
@@ -79,7 +79,7 @@ jobs:
             echo "tenant-id=$(az keyvault secret show --subscription ${{ env.admin_seeding_keyvault_subscription }} --vault-name ${{ env.admin_seeding_keyvault }} --name 'tenant-id' --query 'value' --output tsv)" >> $GITHUB_ENV
           azcliversion: latest
       - name: '21_Add_project_member_ps_3_pwsh'
-        uses: azure/powershell@v2
+        uses: azure/powershell@53dd145408794f7e80f97cfcca04155c85234709 # v2.0.0
         with:
           inlineScript:  |
             sudo pwsh -Command "Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force ; { Install-Module -Name Az -AllowClobber -Scope CurrentUser -Force
@@ -87,13 +87,13 @@ jobs:
             ${{ github.workspace }}/aifactory/esml-util/26-add-esml-coreteam-member.ps1 -spSecret \"${{ env.esml-common-bicep-sp-secret }}\" -spID \"${{ env.esml-common-bicep-sp-id }}\" -tenantID \"${{ env.tenant-id }}\" -subscriptionID \"${{ env.dev_test_prod_sub_id }}\" -storageAccount \"${{ env.admin_storage_account }}\" -adlsgen2filesystem \"${{ env.admin_storage_account_container_name }}\" -userObjectIds \"${{ env.user_object_ids_comma_separated_list }}\" -projectKeyvaultNameSuffix \"${{ env.project_keyvault_suffix }}\" -commonKeyvaultNameSuffix \"${{ env.common_keyvault_suffix }}\" -aifactorySalt \"${{ env.admin_aiFactorySalt }}\" -commonRGNamePrefix \"${{ env.admin_rg_name_prefix }}\" -commonResourceSuffix \"${{ env.admin_commonResourceSuffix }}\" -aifactorySuffixRG \"${{ env.admin_aifactorySuffixRG }}\" -locationSuffix \"${{ env.admin_locationSuffix }}\" -projectNumber \"${{ env.project_number_000 }}\" -env \"${{ env.dev_test_prod }}\" -location \"${{ env.admin_location }}\"} "
           azPSVersion: latest
       - name: 10_Remove ADO IP from keyvault FW whitelist
-        uses: azure/cli@v2
+        uses: azure/cli@9f7ce6f37c31b777ec6c6b6d1dfe7db79f497956 # v2.2.0
         with:
           inlineScript: az keyvault network-rule remove --subscription ${{ env.admin_seeding_keyvault_subscription }}  --resource-group ${{ env.admin_seeding_keyvault_rg }} --name ${{ env.admin_seeding_keyvault }} --ip-address ${{ env.admin_ip_fw }}
           azcliversion: latest
         if: always()
       - name: 11_Remove ADO IP from storage FW whitelist
-        uses: azure/cli@v2
+        uses: azure/cli@9f7ce6f37c31b777ec6c6b6d1dfe7db79f497956 # v2.2.0
         with:
           inlineScript: |
             commonRGNamePrefix=${{ env.admin_rg_name_prefix }}
