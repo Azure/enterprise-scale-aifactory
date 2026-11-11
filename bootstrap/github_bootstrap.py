@@ -1,4 +1,4 @@
-"""Fail-closed GitHub bootstrap. Environment files are data, never shell programs."""
+"""Fail-closed v1.25+ GitHub mirror/settings bootstrap; not registered factory configuration."""
 
 import argparse
 import json
@@ -15,7 +15,18 @@ import uuid
 
 
 ROOT = Path(__file__).resolve().parents[1]
-ENVIRONMENTS = {"dev": "dev", "stage": "test", "prod": "prod"}
+ENVIRONMENTS = ("dev", "stage", "prod")
+POLICY_FIELDS = {
+    "destination": ("GITHUB_DESTINATION_REPO", "GITHUB_NEW_REPO"),
+    "environments": ("GITHUB_ENVIRONMENTS",),
+    "auth_mode": ("GITHUB_AUTH_MODE",),
+    "source": ("GITHUB_SOURCE_REPO", "GITHUB_TEMPLATE_REPO"),
+    "source_branch": ("GITHUB_SOURCE_BRANCH",),
+    "visibility": ("GITHUB_VISIBILITY", "GITHUB_NEW_REPO_VISIBILITY"),
+    "destination_state": ("GITHUB_DESTINATION_STATE",),
+    "default_branch": ("GITHUB_DEFAULT_BRANCH",),
+    "transport": ("GITHUB_TRANSPORT", "GITHUB_USE_SSH"),
+}
 
 
 class BootstrapError(Exception):
@@ -95,60 +106,50 @@ def resolve_value(values, sources, environment):
     return "", sources[0].replace("{ENV}", environment.upper())
 
 
-def validate_credentials(value, environment, tenant, subscription):
-    try:
-        credentials = json.loads(value)
-        for key in ("clientId", "clientSecret", "tenantId", "subscriptionId"):
-            if not isinstance(credentials[key], str) or not credentials[key].strip() or placeholder(credentials[key]):
-                raise ValueError()
-        for key in ("clientId", "tenantId", "subscriptionId"):
-            require_uuid(credentials[key], key)
-        if tenant and credentials["tenantId"].lower() != tenant.lower():
-            raise ValueError()
-        if subscription and credentials["subscriptionId"].lower() != subscription.lower():
-            raise ValueError()
-    except (ValueError, KeyError, TypeError, BootstrapError):
-        raise BootstrapError(f"{environment}: AZURE_CREDENTIALS must contain real clientId/clientSecret/tenantId/subscriptionId matching this environment.") from None
+def validate_keys(values, mapping):
+    allowed = {key for keys in POLICY_FIELDS.values() for key in keys}
+    sources = [mapping["environment_source"]]
+    for kind in ("variables", "secrets"):
+        for definition in mapping[kind].values():
+            source = definition["source"]
+            sources.extend([source] if isinstance(source, str) else source)
+    allowed.update(source.replace("{ENV}", env.upper()) for source in sources for env in ENVIRONMENTS)
+    unknown = sorted(set(values) - allowed)
+    if unknown:
+        raise BootstrapError("Unsupported .env keys: " + ", ".join(unknown)
+                             + ". Use the registered API for factory configuration; this helper only manages GitHub authentication settings.")
 
 
 def build_plan(values, environments, auth_mode, initial=True):
     mapping = load_mapping()
+    validate_keys(values, mapping)
     if not environments or len(set(environments)) != len(environments) or any(env not in ENVIRONMENTS for env in environments):
         raise BootstrapError("Select distinct environments from dev,stage,prod.")
-    if auth_mode not in ("oidc", "credentials"):
-        raise BootstrapError("Select oidc or credentials authentication.")
+    if auth_mode not in mapping["auth_modes"]:
+        raise BootstrapError("Select an explicit supported OIDC mode; the pinned lifecycle templates do not support AZURE_CREDENTIALS.")
     plan = {}
     for environment in environments:
+        source = mapping["environment_source"].replace("{ENV}", environment.upper())
+        namespace = values.get(source, environment)
+        if not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", namespace) or placeholder(namespace):
+            raise BootstrapError(f"{source} must name the exact reviewed provider auth_namespace (1-128 letters, digits, dot, underscore or hyphen).")
+        if namespace.casefold() in {name.casefold() for name in plan}:
+            raise BootstrapError("Selected environments must have distinct GitHub auth namespaces.")
         settings = {"variables": {}, "secrets": {}}
         for kind in ("variables", "secrets"):
-            definitions = dict(mapping[kind])
-            definitions.update({key: {"source": [f"{{ENV}}_{key}", key]}
-                                for key in mapping.get("optional_" + kind, [])})
-            for name, definition in definitions.items():
+            for name, definition in mapping[kind].items():
                 if definition.get("auth") and definition["auth"] != auth_mode:
                     continue
-                if "derived" in definition:
-                    value = {"environment": ENVIRONMENTS[environment], "auth_mode": auth_mode}[definition["derived"]]
-                    source = name
-                else:
-                    value, source = resolve_value(values, definition.get("source", name), environment)
-                required = definition.get("required", False) and (initial or kind != "secrets")
+                value, source = resolve_value(values, definition["source"], environment)
+                required = definition.get("required", False) and initial
                 if not value.strip() or placeholder(value):
                     if required:
                         raise BootstrapError(f"{environment}: provide a non-placeholder value for {source}.")
-                    if name == "AZURE_CREDENTIALS" and value.strip():
-                        raise BootstrapError(f"{environment}: refusing placeholder AZURE_CREDENTIALS.")
                     continue
-                if definition.get("managed_externally"):
-                    raise BootstrapError(f"{name} is repository-scoped and managed separately; bootstrap supports GitHub dev/stage/prod only.")
                 if definition.get("format") == "uuid":
                     require_uuid(value, source)
                 settings[kind][name] = value
-        variables, secrets = settings["variables"], settings["secrets"]
-        if "AZURE_CREDENTIALS" in secrets:
-            validate_credentials(secrets["AZURE_CREDENTIALS"], environment, secrets.get("TENANT_ID"),
-                                 variables.get("AZURE_SUBSCRIPTION_ID"))
-        plan[environment] = settings
+        plan[namespace] = settings
     return plan
 
 
@@ -233,6 +234,7 @@ def check_repository(runner, name, admin=False, visibility=None):
 
 
 def source_branch_exists(runner, url, branch):
+    require_registered_release(branch)
     runner.run(["git", "check-ref-format", f"refs/heads/{branch}"])
     output = runner.run(["git", "ls-remote", "--exit-code", "--heads", url, f"refs/heads/{branch}"])
     if not any(line.split()[-1:] == [f"refs/heads/{branch}"] for line in output.splitlines()):
@@ -251,6 +253,7 @@ def remove_owned_readonly(function, path, exception):
 
 def mirror_git(runner, source, destination, branch, workspace):
     """Only call after API authorization; repeat emptiness immediately before push."""
+    require_registered_release(branch)
     if str(source).casefold() == str(destination).casefold():
         raise BootstrapError("Source and destination must differ.")
     assert_empty(runner, destination)
@@ -269,35 +272,36 @@ def mirror_git(runner, source, destination, branch, workspace):
                 shutil.rmtree(mirror, onerror=remove_owned_readonly)
 
 
-def preflight_settings(runner, destination, plan, initial):
+def preflight_settings(runner, destination, plan, auth_mode):
     repo_variables = api(runner, f"repos/{destination}/actions/variables", paginate=True)
     names_from_pages(repo_variables, "variables")
-    for page in repo_variables if isinstance(repo_variables, list) else [repo_variables]:
-        for variable in page["variables"]:
-            if variable["name"] == "AIFACTORY_GITHUB_ENVIRONMENTS":
-                try:
-                    routing = json.loads(variable["value"])
-                    if not isinstance(routing, dict) or any(routing.get(env) != env for env in plan):
-                        raise ValueError()
-                except (KeyError, TypeError, ValueError):
-                    raise BootstrapError("Repository environment routing does not match the selected dev/stage/prod environments.") from None
     existing = names_from_pages(api(runner, f"repos/{destination}/environments", paginate=True), "environments")
     mapping = load_mapping()
     for environment, settings in plan.items():
-        if environment not in existing:
-            if not initial:
-                for name, definition in mapping["secrets"].items():
-                    if definition.get("required") and (not definition.get("auth") or definition["auth"] == settings["variables"]["AZURE_AUTH_MODE"]):
-                        if name not in settings["secrets"]:
-                            raise BootstrapError(f"{environment}: new environment requires {name}.")
-            continue
-        endpoint = f"repos/{destination}/environments/{environment}"
-        secrets = names_from_pages(api(runner, endpoint + "/secrets", paginate=True), "secrets")
-        names_from_pages(api(runner, endpoint + "/variables", paginate=True), "variables")
-        for name, definition in mapping["secrets"].items():
-            if definition.get("required") and (not definition.get("auth") or definition["auth"] == settings["variables"]["AZURE_AUTH_MODE"]):
-                if name not in settings["secrets"] and name not in secrets:
-                    raise BootstrapError(f"{environment}: required secret {name} was neither supplied nor found on GitHub.")
+        if environment not in existing and environment.casefold() in {name.casefold() for name in existing}:
+            raise BootstrapError("Use the existing GitHub environment's exact spelling; no environment protection is changed.")
+        for kind in ("variables", "secrets"):
+            names, remote = set(), {}
+            if environment in existing:
+                endpoint = f"repos/{destination}/environments/{environment}/{kind}"
+                response = api(runner, endpoint, paginate=True)
+                names = names_from_pages(response, kind)
+                if kind == "variables":
+                    remote = {item["name"]: item.get("value") for page in (
+                        response if isinstance(response, list) else [response]) for item in page[kind]}
+            for name, definition in mapping[kind].items():
+                if not definition.get("required") or definition.get("auth", auth_mode) != auth_mode:
+                    continue
+                if name in settings[kind]:
+                    continue
+                if name not in names:
+                    raise BootstrapError(f"{environment}: required {kind} {name} was neither supplied nor found on GitHub.")
+                if kind == "variables":
+                    value = remote[name]
+                    if not isinstance(value, str) or not value.strip() or placeholder(value):
+                        raise BootstrapError(f"{environment}: existing variable {name} is not valid.")
+                    if definition.get("format") == "uuid":
+                        require_uuid(value, name)
     return existing
 
 
@@ -315,22 +319,10 @@ def sync_settings(runner, destination, plan, existing, completed):
 
 def resolve_options(options, values):
     resolved = argparse.Namespace(**vars(options))
-    fields = {
-        "destination": ("GITHUB_DESTINATION_REPO", "GITHUB_NEW_REPO"),
-        "environments": ("GITHUB_ENVIRONMENTS",),
-        "auth_mode": ("GITHUB_AUTH_MODE",),
-    }
-    if options.command == "mirror":
-        fields.update({
-            "source": ("GITHUB_SOURCE_REPO", "GITHUB_TEMPLATE_REPO"),
-            "source_branch": ("GITHUB_SOURCE_BRANCH",),
-            "visibility": ("GITHUB_VISIBILITY", "GITHUB_NEW_REPO_VISIBILITY"),
-            "destination_state": ("GITHUB_DESTINATION_STATE",),
-            "default_branch": ("GITHUB_DEFAULT_BRANCH",),
-            "transport": ("GITHUB_TRANSPORT", "GITHUB_USE_SSH"),
-        })
-    defaults = {"environments": "dev", "auth_mode": "oidc", "default_branch": "release/v1.25"}
-    choices = {"auth_mode": ("oidc", "credentials"), "visibility": ("private", "public", "internal"),
+    fields = {field: keys for field, keys in POLICY_FIELDS.items()
+              if options.command == "mirror" or field in ("destination", "environments", "auth_mode")}
+    defaults = {"environments": "dev"}
+    choices = {"auth_mode": tuple(load_mapping()["auth_modes"]), "visibility": ("private", "public", "internal"),
                "destination_state": ("create", "existing-empty"), "transport": ("https", "ssh")}
     for field, keys in fields.items():
         value = getattr(options, field)
@@ -347,13 +339,20 @@ def resolve_options(options, values):
                 candidates.append(candidate)
             if len(set(candidates)) > 1:
                 raise BootstrapError(f"Conflicting local policy aliases: {', '.join(keys)}. Remove the ambiguity or pass --{field.replace('_', '-')}.")
-            value = candidates[0] if candidates else defaults.get(field, "")
+            value = candidates[0] if candidates else (
+                resolved.source_branch if field == "default_branch" else defaults.get(field, ""))
         if not value.strip() or placeholder(value):
             raise BootstrapError(f"Configure {keys[0]} in the local .env or pass --{field.replace('_', '-')} explicitly.")
         if field in choices and value not in choices[field]:
             raise BootstrapError(f"{keys[0]} / --{field.replace('_', '-')} must be one of: {', '.join(choices[field])}.")
         setattr(resolved, field, value)
     return resolved
+
+
+def require_registered_release(branch):
+    version = re.fullmatch(r"release/v([1-9][0-9]*)\.(0|[1-9][0-9]*)(?:\.(0|[1-9][0-9]*))?", branch)
+    if not version or tuple(int(part) for part in version.groups()[:2]) < (1, 25):
+        raise BootstrapError("Select an explicit release/v1.25 or later source branch; legacy releases and main are not supported.")
 
 
 def execute(options, values, runner=None):
@@ -364,11 +363,14 @@ def execute(options, values, runner=None):
     plan = build_plan(values, environments, options.auth_mode, initial=options.command == "mirror")
     source = None
     if options.command == "mirror":
+        require_registered_release(options.source_branch)
         source = repository_name(options.source)
         if source.casefold() == destination.casefold():
             raise BootstrapError("Source and destination repositories must differ (case-insensitive).")
         if options.default_branch != options.source_branch:
             raise BootstrapError("Destination default branch must be the explicitly selected source release branch; no branch is rewritten.")
+        if options.auth_mode == "oidc-single-writer" and options.visibility != "private":
+            raise BootstrapError("The pinned single-writer contract requires a private destination repository.")
     completed = []
     try:
         runner.require_tools(["gh", "git"] if source else ["gh"])
@@ -391,12 +393,14 @@ def execute(options, values, runner=None):
             else:
                 check_repository(runner, destination, admin=True, visibility=options.visibility)
                 assert_empty(runner, destination_url)
-                existing = preflight_settings(runner, destination, plan, initial=True)
+                existing = preflight_settings(runner, destination, plan, options.auth_mode)
         else:
-            check_repository(runner, destination, admin=True)
-            existing = preflight_settings(runner, destination, plan, initial=False)
+            check_repository(runner, destination, admin=True,
+                             visibility="private" if options.auth_mode == "oidc-single-writer" else None)
+            existing = preflight_settings(runner, destination, plan, options.auth_mode)
         if options.dry_run:
             print("DRY RUN: read-only preflight passed. No files or GitHub settings changed.")
+            print("Settings target GitHub environments only; no register, API/runtime configuration, workflow, federation or pipeline binding is created or verified.")
             if source:
                 print(f"Would {options.destination_state}: {source} -> {destination}; full refs/history; destination default {options.default_branch}.")
                 if options.destination_state == "create":
@@ -410,7 +414,7 @@ def execute(options, values, runner=None):
                 runner.run(["gh", "repo", "create", destination, "--" + options.visibility])
                 completed.append("destination repository created")
                 check_repository(runner, destination, admin=True, visibility=options.visibility)
-                existing = preflight_settings(runner, destination, plan, initial=True)
+                existing = preflight_settings(runner, destination, plan, options.auth_mode)
             # Recheck both API permissions and refs after creation/preflight.
             check_repository(runner, destination, admin=True, visibility=options.visibility)
             mirror_git(runner, source_url, destination_url, options.source_branch, ROOT)
@@ -427,6 +431,7 @@ def execute(options, values, runner=None):
             error = "Local filesystem operation failed; details redacted."
         raise BootstrapError(f"{error}\nCompleted: {summary}. No automatic rollback or deletion is attempted; a failed write may have reached GitHub. Inspect the destination before retrying.") from None
     print(f"Completed {options.command}: {destination}; environments: {', '.join(environments)}. Values redacted.")
+    print("GitHub settings only: registered catalog, API/runtime, federation and pipeline bindings remain unchanged and unverified.")
     return plan
 
 
@@ -438,14 +443,15 @@ def parser():
         command.add_argument("--env-file", type=Path, default=ROOT / ".env", help="Defaults to repository-root .env; explicit relative paths use caller cwd; never sourced")
         command.add_argument("--destination", help="Override GITHUB_DESTINATION_REPO (GitHub owner/repository)")
         command.add_argument("--environments", help="Override GITHUB_ENVIRONMENTS (default dev); comma-separated dev,stage,prod")
-        command.add_argument("--auth-mode", choices=("oidc", "credentials"), help="Override GITHUB_AUTH_MODE (default oidc)")
+        command.add_argument("--auth-mode", choices=tuple(load_mapping()["auth_modes"]),
+                             help="Required explicit workflow authentication contract; no credential-JSON fallback is supported by the pinned templates")
         command.add_argument("--dry-run", action="store_true", help="Read-only preflight and redacted plan; no writes, clone or push")
         if name == "mirror":
             command.add_argument("--source", help="Override GITHUB_SOURCE_REPO (GitHub owner/repository)")
             command.add_argument("--source-branch", help="Override GITHUB_SOURCE_BRANCH")
             command.add_argument("--visibility", choices=("private", "public", "internal"), help="Override GITHUB_VISIBILITY")
             command.add_argument("--destination-state", choices=("create", "existing-empty"), help="Override GITHUB_DESTINATION_STATE; explicit intent is mandatory")
-            command.add_argument("--default-branch", help="Override GITHUB_DEFAULT_BRANCH (default release/v1.25); destination only, must match source-branch")
+            command.add_argument("--default-branch", help="Override GITHUB_DEFAULT_BRANCH (defaults to selected source branch); destination only, must match source-branch")
             command.add_argument("--transport", choices=("https", "ssh"), help="Override GITHUB_TRANSPORT")
     return result
 

@@ -20,20 +20,65 @@ def valid_values():
         "TENANT_ID": "11111111-1111-1111-1111-111111111111",
         "DEV_SUBSCRIPTION_ID": "22222222-2222-2222-2222-222222222222",
         "DEV_AZURE_CLIENT_ID": "33333333-3333-3333-3333-333333333333",
-        "AIFACTORY_LOCATION": "swedencentral",
-        "AIFACTORY_LOCATION_SHORT": "sdc",
-        "AIFACTORY_PREFIX": "acme",
-        "AIFACTORY_SUFFIX": "-001",
-        "LAKE_PREFIX": "acmelake",
-        "AIFACTORY_SEEDING_KEYVAULT_NAME": "seed-vault",
-        "AIFACTORY_SEEDING_KEYVAULT_RG": "seed-rg",
-        "AIFACTORY_SEEDING_KEYVAULT_SUBSCRIPTION_ID": "22222222-2222-2222-2222-222222222222",
-        "PROJECT_NUMBER": "001",
-        "DEV_CIDR_RANGE": "20",
     }
 
 
 class EnvironmentTests(unittest.TestCase):
+    def test_registered_minimal_values_need_no_legacy_infrastructure_configuration(self):
+        values = {key: value for key, value in valid_values().items()
+                  if key in {"TENANT_ID", "DEV_SUBSCRIPTION_ID", "DEV_AZURE_CLIENT_ID"}}
+        self.assertEqual(gb.build_plan(values, ["dev"], "oidc"), {
+            "dev": {
+                "variables": {"AZURE_SUBSCRIPTION_ID": values["DEV_SUBSCRIPTION_ID"]},
+                "secrets": {"TENANT_ID": values["TENANT_ID"],
+                            "AZURE_CLIENT_ID": values["DEV_AZURE_CLIENT_ID"]},
+            },
+        })
+
+    def test_obsolete_settings_rejected_instead_of_silently_accepted(self):
+        for key in ("AIFACTORY_PREFIX", "LAKE_PREFIX", "DEV_CIDR_RANGE",
+                    "ENABLE_APIM", "DEV_VNET_IP_RANGE", "PROJECT_TYPE",
+                    "AIFACTORY_GITHUB_ENVIRONMENTS", "DEV_AZURE_CREDENTIALS"):
+            values = {name: value for name, value in valid_values().items()
+                      if name in {"TENANT_ID", "DEV_SUBSCRIPTION_ID", "DEV_AZURE_CLIENT_ID"}}
+            values[key] = ""
+            with self.subTest(key=key), self.assertRaisesRegex(gb.BootstrapError, "Unsupported"):
+                gb.build_plan(values, ["dev"], "oidc")
+
+    def test_single_writer_oidc_matches_public_enrollment_variables(self):
+        values = {key: value for key, value in valid_values().items()
+                  if key in {"TENANT_ID", "DEV_SUBSCRIPTION_ID", "DEV_AZURE_CLIENT_ID"}}
+        plan = gb.build_plan(values, ["dev"], "oidc-single-writer")["dev"]
+        self.assertEqual(plan["secrets"], {})
+        self.assertEqual(plan["variables"], {
+            "AZURE_CLIENT_ID": values["DEV_AZURE_CLIENT_ID"],
+            "AZURE_TENANT_ID": values["TENANT_ID"],
+            "AZURE_SUBSCRIPTION_ID": values["DEV_SUBSCRIPTION_ID"],
+        })
+
+    def test_registered_auth_namespace_is_explicit_and_not_an_azure_environment_translation(self):
+        values = {key: value for key, value in valid_values().items()
+                  if key in {"TENANT_ID", "DEV_SUBSCRIPTION_ID", "DEV_AZURE_CLIENT_ID"}}
+        values["DEV_GITHUB_ENVIRONMENT"] = "factory-001-dev"
+        self.assertEqual(set(gb.build_plan(values, ["dev"], "oidc")), {"factory-001-dev"})
+
+    def test_namespace_rejects_ambiguous_names_and_duplicate_targets(self):
+        for namespace in ("", "<namespace>", "../other", "name/other", "a" * 129):
+            with self.subTest(namespace=namespace), self.assertRaises(gb.BootstrapError):
+                gb.build_plan({**valid_values(), "DEV_GITHUB_ENVIRONMENT": namespace}, ["dev"], "oidc")
+        values = {**valid_values(), "STAGE_SUBSCRIPTION_ID": valid_values()["DEV_SUBSCRIPTION_ID"],
+                  "STAGE_AZURE_CLIENT_ID": valid_values()["DEV_AZURE_CLIENT_ID"],
+                  "STAGE_GITHUB_ENVIRONMENT": "DEV"}
+        with self.assertRaisesRegex(gb.BootstrapError, "distinct GitHub"):
+            gb.build_plan(values, ["dev", "stage"], "oidc")
+
+    def test_selected_identity_uuid_validation_never_discloses_values(self):
+        for key in valid_values():
+            for value in ("not-a-uuid-private-value", "00000000-0000-0000-0000-000000000000"):
+                with self.subTest(key=key, value=value), self.assertRaises(gb.BootstrapError) as raised:
+                    gb.build_plan({**valid_values(), key: value}, ["dev"], "oidc")
+                self.assertNotIn(value, str(raised.exception))
+
     def parse(self, content):
         with tempfile.TemporaryDirectory(dir=ROOT, prefix=".bootstrap-test-") as directory:
             path = Path(directory) / ".env"
@@ -56,52 +101,45 @@ class EnvironmentTests(unittest.TestCase):
     def test_template_parses_without_duplicate_keys(self):
         gb.parse_env(ROOT / ".env.template")
 
-    def test_selected_environment_only_and_stage_translation(self):
+    def test_selected_environment_only_without_legacy_stage_translation(self):
         values = valid_values()
         values["PROD_SUBSCRIPTION_ID"] = "<todo>"
         plan = gb.build_plan(values, ["dev"], "oidc")
-        self.assertEqual(plan["dev"]["variables"]["AZURE_ENV_NAME"], "dev")
+        self.assertEqual(set(plan), {"dev"})
+        self.assertNotIn("AZURE_ENV_NAME", plan["dev"]["variables"])
         values.update(STAGE_SUBSCRIPTION_ID=values["DEV_SUBSCRIPTION_ID"],
-                      STAGE_AZURE_CLIENT_ID=values["DEV_AZURE_CLIENT_ID"],
-                      STAGE_CIDR_RANGE="30")
-        self.assertEqual(gb.build_plan(values, ["stage"], "oidc")["stage"]["variables"]["AZURE_ENV_NAME"], "test")
+                      STAGE_AZURE_CLIENT_ID=values["DEV_AZURE_CLIENT_ID"])
+        self.assertEqual(set(gb.build_plan(values, ["stage"], "oidc")), {"stage"})
         with self.assertRaises(gb.BootstrapError):
             gb.build_plan(values, ["prod"], "oidc")
 
     def test_missing_and_placeholder_required_values_fail(self):
         for value in ["", "<todo>", "replace_with_dev_sp_credentials"]:
             values = valid_values()
-            values["AIFACTORY_PREFIX"] = value
+            values["DEV_SUBSCRIPTION_ID"] = value
             with self.subTest(value=value), self.assertRaises(gb.BootstrapError):
                 gb.build_plan(values, ["dev"], "oidc")
 
-    def test_omitted_blank_optional_settings_preserved(self):
+    def test_omitted_blank_and_placeholder_sync_settings_preserved(self):
         values = valid_values()
-        values.update(PROJECT_MEMBERS="", ENABLE_APIM="", AIFACTORY_SALT="<5chars>")
-        plan = gb.build_plan(values, ["dev"], "oidc")["dev"]
-        self.assertNotIn("PROJECT_MEMBERS", plan["secrets"])
-        self.assertNotIn("ENABLE_APIM", plan["variables"])
-        self.assertNotIn("AIFACTORY_SALT", plan["variables"])
-        self.assertNotIn("AZURE_CREDENTIALS", plan["secrets"])
+        values.update(DEV_AZURE_CLIENT_ID="", DEV_SUBSCRIPTION_ID="<subscription-uuid>")
+        del values["TENANT_ID"]
+        plan = gb.build_plan(values, ["dev"], "oidc", initial=False)["dev"]
+        self.assertEqual(plan, {"variables": {}, "secrets": {}})
 
-    def test_real_credentials_required_and_checked(self):
+    def test_credential_json_is_not_a_supported_template_fallback(self):
         values = valid_values()
-        for credential in ["replace_with_credentials", '{"clientSecret":"<todo>"}']:
+        for credential in ["replace_with_credentials", '{"clientSecret":"<todo>"}',
+                           json.dumps({"clientId": values["DEV_AZURE_CLIENT_ID"],
+                                       "clientSecret": "a real secret",
+                                       "tenantId": values["TENANT_ID"],
+                                       "subscriptionId": values["DEV_SUBSCRIPTION_ID"]})]:
             values["DEV_AZURE_CREDENTIALS"] = credential
-            with self.assertRaises(gb.BootstrapError):
+            with self.assertRaises(gb.BootstrapError) as raised:
                 gb.build_plan(values, ["dev"], "credentials")
-        values["DEV_AZURE_CREDENTIALS"] = json.dumps({
-            "clientId": values["DEV_AZURE_CLIENT_ID"], "clientSecret": "a real secret",
-            "tenantId": values["TENANT_ID"], "subscriptionId": values["DEV_SUBSCRIPTION_ID"]})
-        plan = gb.build_plan(values, ["dev"], "credentials")["dev"]
-        self.assertEqual(plan["secrets"]["AZURE_CREDENTIALS"], values["DEV_AZURE_CREDENTIALS"])
-        self.assertNotIn("AZURE_CLIENT_ID", plan["secrets"])
-        for secret in ("dummy", "change_me", "replace_me"):
-            payload = json.loads(values["DEV_AZURE_CREDENTIALS"])
-            payload["clientSecret"] = secret
-            values["DEV_AZURE_CREDENTIALS"] = json.dumps(payload)
-            with self.subTest(secret=secret), self.assertRaises(gb.BootstrapError):
-                gb.build_plan(values, ["dev"], "credentials")
+            self.assertNotIn(credential, str(raised.exception))
+        with self.assertRaisesRegex(gb.BootstrapError, "do not support AZURE_CREDENTIALS"):
+            gb.build_plan(valid_values(), ["dev"], "credentials")
 
     def test_sync_preserves_blank_auth_secrets(self):
         values = valid_values()
@@ -109,25 +147,23 @@ class EnvironmentTests(unittest.TestCase):
         plan = gb.build_plan(values, ["dev"], "oidc", initial=False)["dev"]
         self.assertNotIn("AZURE_CLIENT_ID", plan["secrets"])
 
-    def test_selected_environment_overrides_and_legacy_aliases(self):
+    def test_selected_environment_overrides_common_identity(self):
         values = valid_values()
-        values.update(ENABLE_APIM="false", DEV_ENABLE_APIM="true", PROJECT_TYPE="genai-1",
-                      DEV_VNET_IP_RANGE="10.20.0.0/16")
-        variables = gb.build_plan(values, ["dev"], "oidc")["dev"]["variables"]
-        self.assertEqual(variables["ENABLE_APIM"], "true")
-        self.assertEqual(variables["ADMIN_PROJECT_TYPE"], "genai-1")
-        self.assertEqual(variables["CIDR_RANGE"], "20")
-        self.assertEqual(variables["COMMON_VNET_CIDR"], "10.20.0.0/16")
+        values.update(DEV_TENANT_ID="44444444-4444-4444-4444-444444444444",
+                      AZURE_CLIENT_ID="55555555-5555-5555-5555-555555555555")
+        secrets = gb.build_plan(values, ["dev"], "oidc")["dev"]["secrets"]
+        self.assertEqual(secrets["TENANT_ID"], values["DEV_TENANT_ID"])
+        self.assertEqual(secrets["AZURE_CLIENT_ID"], values["DEV_AZURE_CLIENT_ID"])
 
     def test_initial_and_sync_have_identical_mapping(self):
         values = valid_values()
         self.assertEqual(gb.build_plan(values, ["dev"], "oidc"),
                          gb.build_plan(values, ["dev"], "oidc", initial=False))
 
-    def test_repository_scoped_environment_routing_is_not_silently_misscoped(self):
+    def test_obsolete_repository_scoped_environment_routing_is_rejected(self):
         values = valid_values()
         values["AIFACTORY_GITHUB_ENVIRONMENTS"] = '{"dev":"custom-dev"}'
-        with self.assertRaisesRegex(gb.BootstrapError, "repository-scoped"):
+        with self.assertRaisesRegex(gb.BootstrapError, "Unsupported"):
             gb.build_plan(values, ["dev"], "oidc")
 
     def test_empty_duplicate_or_unknown_environment_rejected(self):
@@ -141,14 +177,22 @@ class EnvironmentTests(unittest.TestCase):
                 gb.repository_name(repository)
         self.assertEqual(gb.repository_name("Owner/Repo.GIT"), "Owner/Repo")
 
-    def test_workflow_references_are_all_classified(self):
+    def test_exact_pinned_scoped_workflow_authentication_is_classified(self):
         mapping = gb.load_mapping()
-        upstream = ROOT / "azure-enterprise-scale-ml" / "environment_setup" / "aifactory" / "bicep" / "copy_to_local_settings" / "github-actions"
-        for context, kind in [("vars", "variables"), ("secrets", "secrets")]:
-            refs = {name for path in upstream.glob("*.yml")
-                    for name in re.findall(r"\b" + context + r"\.([A-Za-z0-9_]+)", path.read_text(encoding="utf-8"))}
-            mapped = set(mapping[kind]) | set(mapping.get("optional_" + kind, []))
-            self.assertFalse(refs - mapped, f"Unmapped {context}: {sorted(refs - mapped)}")
+        upstream = ROOT / "azure-enterprise-scale-ml"
+        self.assertEqual(mapping["upstream_commit"], "89eca66185366a702b026cec8c938570548c649c")
+        self.assertNotIn("optional_variables", mapping)
+        for mode, contract in mapping["auth_modes"].items():
+            path = upstream.joinpath(*contract["workflow"].split("/"))
+            workflow = path.read_text(encoding="utf-8")
+            self.assertIn("id-token: write", workflow)
+            self.assertIn("environment: ${{ inputs.auth_namespace }}", workflow)
+            self.assertNotIn("AZURE_CREDENTIALS", workflow)
+            for context, kind in [("vars", "variables"), ("secrets", "secrets")]:
+                refs = set(re.findall(r"\b" + context + r"\.([A-Za-z0-9_]+)", workflow))
+                mapped = {name for name, definition in mapping[kind].items()
+                          if definition.get("auth", mode) == mode}
+                self.assertEqual(refs, mapped)
 
 
 class RunnerTests(unittest.TestCase):
@@ -197,15 +241,135 @@ class FakeRunner:
         if args[:3] == ["gh", "api", "repos/owner/dest/actions/variables"]:
             return '{"variables":[]}'
         if args[:3] == ["gh", "api", "repos/owner/dest/environments/dev/secrets"]:
-            return '{"secrets":[{"name":"AZURE_CLIENT_ID"},{"name":"TENANT_ID"},{"name":"AIFACTORY_SEEDING_KEYVAULT_SUBSCRIPTION_ID"}]}'
+            return '{"secrets":[{"name":"AZURE_CLIENT_ID"},{"name":"TENANT_ID"}]}'
         if args[:3] == ["gh", "api", "repos/owner/dest/environments/dev/variables"]:
             return '{"variables":[]}'
         return "{}"
 
 
 class OrchestrationTests(unittest.TestCase):
+    def test_auth_mode_requires_explicit_choice_before_any_tools(self):
+        values = self.policy_values()
+        del values["GITHUB_AUTH_MODE"]
+        runner = FakeRunner()
+        with self.assertRaisesRegex(gb.BootstrapError, "GITHUB_AUTH_MODE"):
+            gb.execute(gb.parser().parse_args(["sync"]), values, runner)
+        self.assertEqual(runner.calls, [])
+
+    def test_selected_source_must_be_v125_or_later_release_before_any_tools(self):
+        for branch in ("main", "release/v1.24", "release/v0.99", "release/v1.25-preview"):
+            values = self.policy_values()
+            values["GITHUB_SOURCE_BRANCH"] = values["GITHUB_DEFAULT_BRANCH"] = branch
+            runner = FakeRunner()
+            with self.subTest(branch=branch), self.assertRaisesRegex(gb.BootstrapError, "v1.25"):
+                gb.execute(gb.parser().parse_args(["mirror"]), values, runner)
+            self.assertEqual(runner.calls, [])
+
+    def test_default_destination_branch_follows_selected_release(self):
+        values = self.policy_values()
+        values["GITHUB_SOURCE_BRANCH"] = "release/v1.26"
+        del values["GITHUB_DEFAULT_BRANCH"]
+        options = gb.resolve_options(gb.parser().parse_args(["mirror"]), values)
+        self.assertEqual(options.default_branch, "release/v1.26")
+
+    def test_missing_source_release_does_not_fall_back_to_main(self):
+        values = self.policy_values()
+        del values["GITHUB_SOURCE_BRANCH"]
+        runner = FakeRunner()
+        with self.assertRaisesRegex(gb.BootstrapError, "GITHUB_SOURCE_BRANCH"):
+            gb.execute(gb.parser().parse_args(["mirror"]), values, runner)
+        self.assertEqual(runner.calls, [])
+
+    def test_unsupported_infrastructure_keys_fail_before_tools(self):
+        runner = FakeRunner()
+        with self.assertRaisesRegex(gb.BootstrapError, "Unsupported"):
+            gb.execute(self.options("sync"), {**valid_values(), "DEV_ENABLE_APIM": "true"}, runner)
+        self.assertEqual(runner.calls, [])
+
+    def test_single_writer_mode_requires_private_destination(self):
+        runner = FakeRunner()
+        with self.assertRaisesRegex(gb.BootstrapError, "private"):
+            gb.execute(self.options(extra=["--auth-mode", "oidc-single-writer", "--visibility", "public"]),
+                       valid_values(), runner)
+        self.assertEqual(runner.calls, [])
+        runner = FakeRunner(overrides={("gh", "api", "repos/owner/dest"): json.dumps({
+            "full_name": "owner/dest", "visibility": "public", "permissions": {"admin": True, "push": True}})})
+        with self.assertRaises(gb.BootstrapError):
+            gb.execute(self.options("sync", ["--auth-mode", "oidc-single-writer"]), valid_values(), runner)
+        self.assertFalse(any("set" in args for args, _ in runner.calls))
+
+    def test_custom_namespace_is_used_for_reads_and_writes_only(self):
+        namespace = "factory-001-dev"
+        runner = FakeRunner(overrides={
+            ("gh", "api", "repos/owner/dest/environments"): json.dumps({"environments": [{"name": namespace}]}),
+            ("gh", "api", f"repos/owner/dest/environments/{namespace}/variables"): '{"variables":[]}',
+            ("gh", "api", f"repos/owner/dest/environments/{namespace}/secrets"): '{"secrets":[]}',
+        })
+        with contextlib.redirect_stdout(io.StringIO()):
+            gb.execute(self.options("sync"), {**valid_values(), "DEV_GITHUB_ENVIRONMENT": namespace}, runner)
+        for args, _ in runner.calls:
+            if "set" in args:
+                self.assertEqual(args[-2:], ["--env", namespace])
+            self.assertNotIn("repos/owner/dest/environments/dev/secrets", args)
+            self.assertFalse(any("register.json" in arg or "factory-lifecycle" in arg for arg in args))
+
+    def test_existing_environment_case_does_not_trigger_protection_overwrite(self):
+        runner = FakeRunner(overrides={
+            ("gh", "api", "repos/owner/dest/environments"): '{"environments":[{"name":"Dev"}]}',
+        })
+        with self.assertRaisesRegex(gb.BootstrapError, "exact spelling"):
+            gb.execute(self.options("sync"), valid_values(), runner)
+        self.assertFalse(any("PUT" in args or "set" in args for args, _ in runner.calls))
+
+    def test_sync_can_preserve_all_existing_authentication_settings(self):
+        for mode in ("oidc", "oidc-single-writer"):
+            expected = gb.build_plan(valid_values(), ["dev"], mode)["dev"]["variables"]
+            runner = FakeRunner(overrides={
+                ("gh", "api", "repos/owner/dest/environments/dev/variables"): json.dumps(
+                    {"variables": [{"name": name, "value": value} for name, value in expected.items()]}),
+            })
+            with self.subTest(mode=mode), contextlib.redirect_stdout(io.StringIO()):
+                gb.execute(self.options("sync", ["--auth-mode", mode]), {}, runner)
+            self.assertFalse(any("set" in args or "PUT" in args or "DELETE" in args for args, _ in runner.calls))
+
+    def test_missing_or_invalid_remote_public_identity_blocks_without_disclosing_it(self):
+        for remote in ([], [{"name": "AZURE_SUBSCRIPTION_ID", "value": "private-invalid-value"}],
+                       [{"name": "AZURE_SUBSCRIPTION_ID", "value": None}]):
+            runner = FakeRunner(overrides={
+                ("gh", "api", "repos/owner/dest/environments/dev/variables"): json.dumps({"variables": remote}),
+            })
+            with self.subTest(remote=remote), self.assertRaises(gb.BootstrapError) as raised:
+                gb.execute(self.options("sync"), {}, runner)
+            self.assertNotIn("private-invalid-value", str(raised.exception))
+            self.assertFalse(any("set" in args or "PUT" in args for args, _ in runner.calls))
+
+    def test_new_environment_cannot_rely_on_repository_authentication_fallback(self):
+        runner = FakeRunner(overrides={
+            ("gh", "api", "repos/owner/dest/environments"): '{"environments":[]}',
+        })
+        with self.assertRaises(gb.BootstrapError):
+            gb.execute(self.options("sync"), {}, runner)
+        self.assertFalse(any("set" in args or "PUT" in args for args, _ in runner.calls))
+
+    def test_paginated_settings_require_all_valid_pages_before_any_mutation(self):
+        for response in ("[]", '[{"variables":[]},{}]', "null"):
+            runner = FakeRunner(overrides={
+                ("gh", "api", "repos/owner/dest/environments/dev/variables"): response,
+            })
+            with self.subTest(response=response), self.assertRaises(gb.BootstrapError):
+                gb.execute(self.options("sync"), valid_values(), runner)
+            self.assertFalse(any("set" in args or "PUT" in args for args, _ in runner.calls))
+
+    def test_sync_single_writer_writes_only_public_identity_variables(self):
+        runner = FakeRunner()
+        with contextlib.redirect_stdout(io.StringIO()):
+            gb.execute(self.options("sync", ["--auth-mode", "oidc-single-writer"]), valid_values(), runner)
+        written = {args[3] for args, _ in runner.calls if args[:3] == ["gh", "variable", "set"]}
+        self.assertEqual(written, {"AZURE_CLIENT_ID", "AZURE_TENANT_ID", "AZURE_SUBSCRIPTION_ID"})
+        self.assertFalse(any(args[:2] == ["gh", "secret"] or "DELETE" in args for args, _ in runner.calls))
+
     def options(self, command="mirror", extra=()):
-        args = [command, "--destination", "owner/dest", "--environments", "dev"]
+        args = [command, "--destination", "owner/dest", "--environments", "dev", "--auth-mode", "oidc"]
         if command == "mirror":
             args += ["--source", "source/template", "--source-branch", "release/v1.25",
                      "--visibility", "private", "--destination-state", "existing-empty",
@@ -422,13 +586,14 @@ class OrchestrationTests(unittest.TestCase):
             gb.execute(self.options("sync"), values, runner)
         self.assertFalse(any("set" in a or "PUT" in a for a, _ in runner.calls))
 
-    def test_existing_custom_environment_routing_fails_before_writes(self):
+    def test_legacy_repository_routing_does_not_control_registered_namespaces(self):
         response = {"variables": [{"name": "AIFACTORY_GITHUB_ENVIRONMENTS",
                                    "value": '{"dev":"custom-dev"}'}]}
         runner = FakeRunner(overrides={("gh", "api", "repos/owner/dest/actions/variables"): json.dumps(response)})
-        with self.assertRaisesRegex(gb.BootstrapError, "routing"):
+        with contextlib.redirect_stdout(io.StringIO()):
             gb.execute(self.options("sync"), valid_values(), runner)
-        self.assertFalse(any("set" in a or "PUT" in a for a, _ in runner.calls))
+        self.assertTrue(any("set" in a and "--env" in a and "dev" in a for a, _ in runner.calls))
+        self.assertFalse(any("custom-dev" in a or "AIFACTORY_GITHUB_ENVIRONMENTS" in a for a, _ in runner.calls))
 
     def test_sync_environment_creation_failure_stops_settings(self):
         runner = FakeRunner(lambda a: "PUT" in a, overrides={

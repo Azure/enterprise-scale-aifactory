@@ -4,6 +4,8 @@ BLUE bootstraps your consumer repository; PURPLE supplies the versioned shared i
 
 Keep your configuration and orchestration entry points here. Reuse PURPLE's infrastructure, lifecycle tooling, Agent Factory and ML Factory without copying or forking the shared implementation.
 
+**v1.25 and newer only:** consumer configuration lives in `azurefactory/register.json`. BLUE does not initialize or run the legacy `aifactory/` layout. Both folders are not needed.
+
 [![Private AI Factory landing zones and isolated project teams](https://raw.githubusercontent.com/jostrm/azure-enterprise-scale-ml/main/documentation/v2/10-19/images/14-eslz-full-1.png)](https://github.com/jostrm/azure-enterprise-scale-ml/blob/89eca66185366a702b026cec8c938570548c649c/documentation/v2/20-29/24-end-2-end-setup.md)
 
 ## Quickstart - v1.25
@@ -11,14 +13,14 @@ Keep your configuration and orchestration entry points here. Reuse PURPLE's infr
 Requires Git, Bash (Git Bash on Windows) and Python 3.10+. GitHub setup also requires an authenticated GitHub CLI with destination-repository permissions and organization SSO approval where applicable.
 
 ```bash
-git clone --branch release/v1.25 --recurse-submodules \
+git -c core.longpaths=true clone --branch release/v1.25 --recurse-submodules \
   https://github.com/Azure/enterprise-scale-aifactory.git my-aifactory
 cd my-aifactory
 bash 01b-BYORepo-init-template-files-once.sh --dry-run
 bash 01b-BYORepo-init-template-files-once.sh
 ```
 
-This initializes local consumer files, not Azure resources. Choose your ownership route before configuring or running deployment pipelines:
+This initializes the empty registered catalog and PURPLE's CLI/helper bundle, not Azure resources. Factory configuration requires a compatible Factory API; deployment is separately reviewed. Choose your repository ownership route:
 
 | Route | Start here |
 |---|---|

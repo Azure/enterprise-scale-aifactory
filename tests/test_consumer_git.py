@@ -1,5 +1,7 @@
 import contextlib
+import hashlib
 import io
+import json
 import os
 from pathlib import Path
 import shutil
@@ -19,7 +21,8 @@ def git(root, *args):
     env = {**os.environ, "GIT_AUTHOR_NAME": "Consumer Test",
            "GIT_AUTHOR_EMAIL": "test@example.invalid", "GIT_COMMITTER_NAME": "Consumer Test",
            "GIT_COMMITTER_EMAIL": "test@example.invalid", "GIT_CONFIG_NOSYSTEM": "1"}
-    return subprocess.run(["git", "-c", "protocol.file.allow=always", "-C", str(root), *args],
+    return subprocess.run(["git", "-c", "protocol.file.allow=always", "-c", "core.longpaths=true",
+                           "-C", str(root), *args],
                           env=env, check=True, capture_output=True, text=True).stdout.strip()
 
 
@@ -101,20 +104,24 @@ class ConsumerGitTests(unittest.TestCase):
             consumer.ensure_submodule(self.parent, expected=self.pin)
         self.assertEqual(git(self.parent / consumer.SUBMODULE, "rev-parse", "HEAD"), newer)
 
-    def test_dispatch_ref_requires_committed_selected_pin_and_templates(self):
-        canonical = ROOT / consumer.SUBMODULE / consumer.SETTINGS / "github-actions"
-        target = self.parent / ".github/workflows"
-        target.mkdir(parents=True)
-        for name in ("infra-project.yml", "infra-project-phase.yml"):
-            (target / name).write_bytes(consumer.render_workflow(canonical / name))
-        git(self.parent, "add", ".")
-        git(self.parent, "commit", "-m", "Pinned workflow fixture")
-        with mock.patch.object(consumer, "PIN", self.pin):
-            consumer.validate_dispatch_ref(self.parent, ROOT / consumer.SUBMODULE, "consumer-branch", "infra-project.yml")
-            with self.assertRaises(ValueError):
-                consumer.validate_dispatch_ref(self.parent, ROOT / consumer.SUBMODULE, "nonexistent", "infra-project.yml")
-        with self.assertRaisesRegex(ValueError, "gitlink"):
-            consumer.validate_dispatch_ref(self.parent, ROOT / consumer.SUBMODULE, "consumer-branch", "infra-project.yml")
+    def test_dirty_source_dry_run_fails_without_mutating_source_or_consumer(self):
+        source = self.parent / consumer.SUBMODULE
+        (source / "customer.txt").write_text("preserve")
+        status = git(self.parent, "status", "--porcelain")
+        with self.assertRaisesRegex(ValueError, "dirty|modified"):
+            consumer.ensure_submodule(self.parent, expected=self.pin, dry_run=True)
+        self.assertEqual((source / "customer.txt").read_text(), "preserve")
+        self.assertEqual(git(self.parent, "status", "--porcelain"), status)
+
+    def test_populated_uninitialized_submodule_is_not_deleted_or_adopted(self):
+        clone = self.root / "populated"
+        git(self.root, "clone", str(self.parent), str(clone))
+        source = clone / consumer.SUBMODULE
+        (source / "customer.txt").write_text("preserve")
+        with self.assertRaisesRegex(ValueError, "populated|metadata"):
+            consumer.ensure_submodule(clone, expected=self.pin)
+        self.assertEqual((source / "customer.txt").read_text(), "preserve")
+        self.assertFalse((source / ".git").exists())
 
     def test_explicit_repair_initializes_exact_pin_without_branch_tip(self):
         repaired = self.root / "repaired"
@@ -161,42 +168,28 @@ class ConsumerGitTests(unittest.TestCase):
 
     def test_empty_ado_recipe_runs_copied_blue_initializer_and_preserves_rerun(self):
         source = ROOT / consumer.SUBMODULE
-        ignore = shutil.ignore_patterns("*.md", "__pycache__", "*.pyc")
-        for relative in (Path("bootstrap"), consumer.SETTINGS):
-            shutil.copytree(source / relative, self.upstream / relative, ignore=ignore)
-        variables = Path("environment_setup/aifactory/variables.json")
-        shutil.copy2(source / variables, self.upstream / variables)
-        for relative in consumer.ENTRY_POINTS.values():
-            origin, destination = source / relative, self.upstream / relative
-            if origin.is_file():
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(origin, destination)
-            elif not destination.exists():
-                destination.mkdir(parents=True)
-                (destination / ".fixture").write_text("Interface fixture; no runtime execution.")
-        git(self.upstream, "add", ".")
-        git(self.upstream, "commit", "-m", "Pinned provider and bootstrap fixture")
-        pin = git(self.upstream, "rev-parse", "HEAD")
-        (self.upstream / "version").write_text("unselected later tip")
-        git(self.upstream, "add", ".")
-        git(self.upstream, "commit", "-m", "Later release fixture")
-
         remote = self.root / "empty-ado.git"
         git(self.root, "init", "--bare", "-b", "main", str(remote))
         target = self.root / "ado-consumer"
         git(self.root, "clone", str(remote), str(target))
-        git(target, "submodule", "add", "-b", "release/v1.25", str(self.upstream), consumer.SUBMODULE)
-        git(target / consumer.SUBMODULE, "checkout", "--detach", pin)
+        selected = target / consumer.SUBMODULE
+        # A local sparse checkout exercises the exact immutable object without a
+        # network fetch or projecting unrelated (very long) example paths.
+        git(target, "clone", "--shared", "--no-checkout", str(source), str(selected))
+        git(selected, "config", "core.longpaths", "true")
+        git(selected, "sparse-checkout", "set", "bootstrap", "environment_setup/azurefactory-cli",
+            "environment_setup/aifactory/bicep/personas", "environment_setup/aifactory/bicep/esml-util")
+        git(selected, "checkout", "--detach", consumer.PIN)
+        git(target, "submodule", "add", str(source), consumer.SUBMODULE)
+        git(target, "config", "--file", ".gitmodules", f"submodule.{consumer.SUBMODULE}.branch", consumer.BRANCH)
         git(target, "add", "--", ".gitmodules", consumer.SUBMODULE)
 
         (target / "bootstrap").mkdir()
-        helper = (ROOT / "bootstrap/consumer.py").read_text(encoding="utf-8")
-        # Only the disposable fixture's expected Git object differs from production.
-        helper = helper.replace(f'PIN = "{consumer.PIN}"', f'PIN = "{pin}"', 1)
-        (target / "bootstrap/consumer.py").write_text(helper, encoding="utf-8")
+        shutil.copy2(ROOT / "bootstrap/consumer.py", target / "bootstrap/consumer.py")
         script = "01b-BYORepo-init-template-files-once.sh"
         shutil.copy2(ROOT / script, target / script)
         shutil.copy2(ROOT / ".gitignore", target / ".gitignore")
+        shutil.copy2(ROOT / ".gitattributes", target / ".gitattributes")
         (target / ".env").write_text("CUSTOMER_VALUE=preserve\n")
         bash = shutil.which("bash")
         if os.name == "nt":
@@ -204,22 +197,74 @@ class ConsumerGitTests(unittest.TestCase):
             if git_bash.is_file():
                 bash = str(git_bash)
         self.assertIsNotNone(bash, "Git Bash is a test prerequisite.")
-        for args in (["--dry-run"], []):
+        def snapshot():
+            return {str(p.relative_to(target)): (hashlib.sha256(p.read_bytes()).hexdigest(),
+                                                 p.stat().st_mtime_ns) if p.is_file() else None
+                    for p in target.rglob("*")}
+
+        before = snapshot()
+        for args in (["--dry-run", "--provider", "ado"], ["--provider", "ado"]):
             result = subprocess.run([bash, str(target / script), *args], cwd=self.root,
                                     capture_output=True, text=True, timeout=90)
             self.assertEqual(result.returncode, 0, result.stderr)
-            if args:
-                self.assertFalse((target / "aifactory").exists())
-        config = target / "aifactory/variables.json"
-        config.write_text('{"dev":{"customer":"preserved"}}\n')
-        result = subprocess.run([bash, str(target / script)], cwd=self.root,
+            if "--dry-run" in args:
+                self.assertEqual(before, snapshot())
+                self.assertFalse((target / "azurefactory").exists())
+        config = target / "azurefactory/register.json"
+        document = json.loads(config.read_text())
+        document["ownership_evidence"] = {"customer": "preserved"}
+        config.write_bytes((json.dumps(document) + "\r\n").encode())
+        before = snapshot()
+        result = subprocess.run([bash, str(target / script), "--provider", "ado"], cwd=self.root,
                                 capture_output=True, text=True, timeout=90)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(config.read_text(), '{"dev":{"customer":"preserved"}}\n')
+        self.assertEqual(before, snapshot())
         self.assertEqual((target / ".env").read_text(), "CUSTOMER_VALUE=preserve\n")
-        self.assertTrue((target / consumer.ADO / "esml-infra-project/infra-project-genai.yaml").is_file())
+        self.assertTrue((target / "ADO-azurefactory.sh").is_file())
+        self.assertFalse((target / "GHA-azurefactory.sh").exists())
+        self.assertFalse((target / "aifactory").exists())
+        self.assertFalse((target / ".github/workflows").exists())
+        self.assertEqual({p.name for p in target.glob("*.sh")},
+                         {script, "azurefactory.sh", "AIFactory-lifecycle.sh", "ADO-azurefactory.sh"})
         self.assertTrue((target / "lib/bootstrap_no_delete.py").is_file())
-        self.assertEqual(git(target / consumer.SUBMODULE, "rev-parse", "HEAD"), pin)
+        self.assertTrue((target / ".azurefactory-tools/azurefactory/cli.py").is_file())
+        self.assertTrue((target / ".azurefactory-tools/persona-engine/personas/pipeline.py").is_file())
+        refresh_script = "03b-GH-add-aifactory-pipelines-once.sh"
+        shutil.copy2(ROOT / refresh_script, target / refresh_script)
+        register_bytes = config.read_bytes()
+        result = subprocess.run([bash, str(target / refresh_script), "--provider", "gha"],
+                                cwd=self.root, capture_output=True, text=True, timeout=90)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((target / "GHA-azurefactory.sh").is_file())
+        self.assertTrue((target / "ADO-azurefactory.sh").is_file())
+        self.assertEqual(config.read_bytes(), register_bytes)
+        self.assertFalse((target / "aifactory").exists())
+        scoped_workflow = target / ".github/workflows/factory-lifecycle.yml"
+        self.assertEqual(scoped_workflow.read_bytes(),
+                         (selected / "bootstrap/templates/factory-lifecycle-gha.yml").read_bytes())
+        self.assertEqual({p.name for p in scoped_workflow.parent.iterdir()}, {"factory-lifecycle.yml"})
+        self.assertFalse((target / "azurefactory/pipelines").exists())
+        deploy_script = "04ab-setup-infra-aifactory.sh"
+        shutil.copy2(ROOT / deploy_script, target / deploy_script)
+        before = snapshot()
+        result = subprocess.run(
+            [bash, str(target / deploy_script), "--execute", "--repo", "org/repo"],
+            cwd=self.root, capture_output=True, text=True, timeout=90)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("azurefactory.sh runtime deploy --help", result.stderr)
+        self.assertEqual(before, snapshot())
+        result = subprocess.run(
+            [bash, str(target / script), "--repair-submodule", "--dry-run", "--provider", "ado"],
+            cwd=self.root, capture_output=True, text=True, timeout=90)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Registered plan", result.stdout)
+        self.assertEqual(before, snapshot())
+        for arguments in (["--help"], ["factory", "create", "--help"], ["runtime", "deploy", "--help"],
+                          ["api", "instructions"]):
+            result = subprocess.run([bash, str(target / "azurefactory.sh"), *arguments],
+                                    cwd=self.root, capture_output=True, text=True, timeout=90)
+            self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(git(target / consumer.SUBMODULE, "rev-parse", "HEAD"), consumer.PIN)
         self.assertEqual(git(target / consumer.SUBMODULE, "status", "--porcelain"), "")
 
 

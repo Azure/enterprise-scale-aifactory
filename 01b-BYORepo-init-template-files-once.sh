@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# v1.25+ only: install pinned registered helpers and an absent empty register.
 set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -n "${AIFACTORY_PYTHON:-}" ]]; then
