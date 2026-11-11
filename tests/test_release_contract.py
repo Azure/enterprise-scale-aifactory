@@ -19,6 +19,17 @@ IMAGE_ROOT = (
 
 
 class ReleaseContractTests(unittest.TestCase):
+    def test_setup_pages_link_to_full_variable_documentation(self):
+        link = (
+            "[Full variable documentation]"
+            "(https://jostrm.github.io/azure-enterprise-scale-ml/)"
+        )
+        for relative in ("README.md", "documentation/bootstrapping.md"):
+            with self.subTest(page=relative):
+                text = (ROOT / relative).read_text(encoding="utf-8")
+                self.assertIn(link, text, f"{relative}: missing variable documentation link")
+                self.assertLess(text.index(link), text.index("## "))
+
     def test_setup_pages_link_to_full_release_guide(self):
         link = (
             "[Full setup & usage guide]"

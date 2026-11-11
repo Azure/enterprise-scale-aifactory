@@ -4,13 +4,16 @@ BLUE supports **v1.25 and newer only**, using `azurefactory/register.json`.
 It does not initialize, migrate into, refresh or deploy the legacy `aifactory/`
 configuration layout. Both configuration folders are not required.
 
-[Full setup & usage guide](https://github.com/jostrm/azure-enterprise-scale-ml/blob/release/v1.25/documentation/v2/20-29/24-end-2-end-setup.md)
+[Full setup & usage guide](https://github.com/jostrm/azure-enterprise-scale-ml/blob/release/v1.25/documentation/v2/20-29/24-end-2-end-setup.md) |
+[Full variable documentation](https://jostrm.github.io/azure-enterprise-scale-ml/)
 
 PURPLE supplies the versioned implementation. BLUE selects
 `release/v1.25` at **`89eca66185366a702b026cec8c938570548c649c`**. The full guide
 tracks the upstream release branch; implementation references and compatibility
 evidence below remain pinned to that exact commit. Reading the guide does not
 update the submodule or select a later source revision.
+The variable documentation site is maintained independently; confirm parameter
+availability against the selected source and installed API.
 Repository bootstrap does not deploy Azure, create identities or credentials,
 configure API connections, register pipelines or launch an editor.
 
