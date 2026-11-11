@@ -4,9 +4,13 @@ BLUE supports **v1.25 and newer only**, using `azurefactory/register.json`.
 It does not initialize, migrate into, refresh or deploy the legacy `aifactory/`
 configuration layout. Both configuration folders are not required.
 
+[Full setup & usage guide](https://github.com/jostrm/azure-enterprise-scale-ml/blob/release/v1.25/documentation/v2/20-29/24-end-2-end-setup.md)
+
 PURPLE supplies the versioned implementation. BLUE selects
-`release/v1.25` at **`89eca66185366a702b026cec8c938570548c649c`**. Every upstream
-path below refers to that exact commit, not `main` or a later branch tip.
+`release/v1.25` at **`89eca66185366a702b026cec8c938570548c649c`**. The full guide
+tracks the upstream release branch; implementation references and compatibility
+evidence below remain pinned to that exact commit. Reading the guide does not
+update the submodule or select a later source revision.
 Repository bootstrap does not deploy Azure, create identities or credentials,
 configure API connections, register pipelines or launch an editor.
 
@@ -300,7 +304,7 @@ On Windows, if the upstream launcher selects an unusable Python Store alias, set
 The API folder argument is the absolute **API-host** `azurefactory` directory,
 not the consumer root; remote clients must not supply a laptop-only path.
 
-Follow the [pinned registered setup walkthrough](https://github.com/jostrm/azure-enterprise-scale-ml/blob/89eca66185366a702b026cec8c938570548c649c/documentation/v2/20-29/24-end-2-end-setup.md#shell-first-new-registered-consumer-v125--main).
+Follow the [Full setup & usage guide](https://github.com/jostrm/azure-enterprise-scale-ml/blob/release/v1.25/documentation/v2/20-29/24-end-2-end-setup.md).
 Explicitly select version `125`; do not accept a default `main` or `124`.
 The helper gitlink and the factory's runtime version selection are distinct:
 inspect the prepared operation's resolved source SHA and require this reviewed
