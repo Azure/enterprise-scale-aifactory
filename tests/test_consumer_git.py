@@ -159,6 +159,69 @@ class ConsumerGitTests(unittest.TestCase):
         consumer.ensure_submodule(self.parent, expected=self.pin)
         self.assertEqual(git(self.parent / consumer.SUBMODULE, "rev-parse", "HEAD"), self.pin)
 
+    def test_empty_ado_recipe_runs_copied_blue_initializer_and_preserves_rerun(self):
+        source = ROOT / consumer.SUBMODULE
+        ignore = shutil.ignore_patterns("*.md", "__pycache__", "*.pyc")
+        for relative in (Path("bootstrap"), consumer.SETTINGS):
+            shutil.copytree(source / relative, self.upstream / relative, ignore=ignore)
+        variables = Path("environment_setup/aifactory/variables.json")
+        shutil.copy2(source / variables, self.upstream / variables)
+        for relative in consumer.ENTRY_POINTS.values():
+            origin, destination = source / relative, self.upstream / relative
+            if origin.is_file():
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(origin, destination)
+            elif not destination.exists():
+                destination.mkdir(parents=True)
+                (destination / ".fixture").write_text("Interface fixture; no runtime execution.")
+        git(self.upstream, "add", ".")
+        git(self.upstream, "commit", "-m", "Pinned provider and bootstrap fixture")
+        pin = git(self.upstream, "rev-parse", "HEAD")
+        (self.upstream / "version").write_text("unselected later tip")
+        git(self.upstream, "add", ".")
+        git(self.upstream, "commit", "-m", "Later release fixture")
+
+        remote = self.root / "empty-ado.git"
+        git(self.root, "init", "--bare", "-b", "main", str(remote))
+        target = self.root / "ado-consumer"
+        git(self.root, "clone", str(remote), str(target))
+        git(target, "submodule", "add", "-b", "release/v1.25", str(self.upstream), consumer.SUBMODULE)
+        git(target / consumer.SUBMODULE, "checkout", "--detach", pin)
+        git(target, "add", "--", ".gitmodules", consumer.SUBMODULE)
+
+        (target / "bootstrap").mkdir()
+        helper = (ROOT / "bootstrap/consumer.py").read_text(encoding="utf-8")
+        # Only the disposable fixture's expected Git object differs from production.
+        helper = helper.replace(f'PIN = "{consumer.PIN}"', f'PIN = "{pin}"', 1)
+        (target / "bootstrap/consumer.py").write_text(helper, encoding="utf-8")
+        script = "01b-BYORepo-init-template-files-once.sh"
+        shutil.copy2(ROOT / script, target / script)
+        shutil.copy2(ROOT / ".gitignore", target / ".gitignore")
+        (target / ".env").write_text("CUSTOMER_VALUE=preserve\n")
+        bash = shutil.which("bash")
+        if os.name == "nt":
+            git_bash = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Git/bin/bash.exe"
+            if git_bash.is_file():
+                bash = str(git_bash)
+        self.assertIsNotNone(bash, "Git Bash is a test prerequisite.")
+        for args in (["--dry-run"], []):
+            result = subprocess.run([bash, str(target / script), *args], cwd=self.root,
+                                    capture_output=True, text=True, timeout=90)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            if args:
+                self.assertFalse((target / "aifactory").exists())
+        config = target / "aifactory/variables.json"
+        config.write_text('{"dev":{"customer":"preserved"}}\n')
+        result = subprocess.run([bash, str(target / script)], cwd=self.root,
+                                capture_output=True, text=True, timeout=90)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(config.read_text(), '{"dev":{"customer":"preserved"}}\n')
+        self.assertEqual((target / ".env").read_text(), "CUSTOMER_VALUE=preserve\n")
+        self.assertTrue((target / consumer.ADO / "esml-infra-project/infra-project-genai.yaml").is_file())
+        self.assertTrue((target / "lib/bootstrap_no_delete.py").is_file())
+        self.assertEqual(git(target / consumer.SUBMODULE, "rev-parse", "HEAD"), pin)
+        self.assertEqual(git(target / consumer.SUBMODULE, "status", "--porcelain"), "")
+
 
 if __name__ == "__main__":
     unittest.main()
