@@ -530,7 +530,7 @@ jobs:
 
     steps:
       - name: 00_Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: true
 
@@ -626,7 +626,7 @@ jobs:
           if ($env:BLUE_AUTH_MODE -eq 'credentials' -and $env:BLUE_JSON_IDENTITY -eq 'true') { throw 'JSON identity requires OIDC; select environment configuration for credentials mode' }
       - name: Azure login with OpenID Connect (OIDC)
         if: ${{ inputs.json_identity_auth }}
-        uses: azure/login@v2
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ inputs.azure_client_id }}
           tenant-id: ${{ inputs.azure_tenant_id }}
@@ -634,7 +634,7 @@ jobs:
 
       - name: Azure login with OpenID Connect (OIDC)
         if: ${{ !inputs.json_identity_auth && (vars.AZURE_AUTH_MODE == 'oidc' || (vars.AZURE_AUTH_MODE == '' && env.AZURE_CLIENT_ID != '')) }}
-        uses: azure/login@v2
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ env.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.TENANT_ID }}
@@ -642,7 +642,7 @@ jobs:
 
       - name: 00_Azure_Login_Service_Principal
         if: ${{ !inputs.json_identity_auth && (vars.AZURE_AUTH_MODE == 'credentials' || (vars.AZURE_AUTH_MODE == '' && env.AZURE_CLIENT_ID == '')) }}
-        uses: azure/login@v2
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
@@ -1725,7 +1725,7 @@ jobs:
       - name: Publish AI Factory deletion reports
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: aifactory-deletion-reports-deploy-project-${{ inputs.phase }}-${{ inputs.environment }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/aifactory-deletion-reports/${{ github.run_id }}-${{ github.run_attempt }}/deploy-project-${{ inputs.phase }}/*.json
@@ -3147,7 +3147,7 @@ jobs:
       # token requested long after the job's login fails (AADSTS700024). Log in again right before the data plane.
       - name: Refresh Azure OIDC login before project lake access
         if: ${{ inputs.phase == 'infra' && inputs.json_identity_auth }}
-        uses: azure/login@v2
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ inputs.azure_client_id }}
           tenant-id: ${{ inputs.azure_tenant_id }}
@@ -3155,7 +3155,7 @@ jobs:
 
       - name: Refresh Azure OIDC login before project lake access (environment identity)
         if: ${{ inputs.phase == 'infra' && !inputs.json_identity_auth && (vars.AZURE_AUTH_MODE == 'oidc' || (vars.AZURE_AUTH_MODE == '' && env.AZURE_CLIENT_ID != '')) }}
-        uses: azure/login@v2
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ env.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.TENANT_ID }}
@@ -4466,7 +4466,7 @@ jobs:
       - name: Publish AI Factory hosts inventory
         if: always() && steps.hosts_inventory.outputs.ready == 'true'
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: aifactory-hosts-${{ inputs.environment }}-${{ inputs.phase }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/aifactory-hosts/${{ github.run_id }}-${{ github.run_attempt }}/${{ inputs.phase }}/
@@ -4659,7 +4659,7 @@ jobs:
       - name: Publish AI Factory region reports
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: aifactory-region-reports-deploy-project-${{ inputs.phase }}-${{ inputs.environment }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/aifactory-region-reports/${{ github.run_id }}-${{ github.run_attempt }}/deploy-project-${{ inputs.phase }}/*.json

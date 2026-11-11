@@ -60,7 +60,7 @@ jobs:
     outputs:
       runs_on: ${{ steps.resolve.outputs.runs_on }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
           persist-credentials: false
@@ -93,7 +93,7 @@ jobs:
     runs-on: ${{ fromJSON(needs.configure.outputs.runs_on) }}
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
           persist-credentials: false
@@ -107,14 +107,14 @@ jobs:
           if ($env:BLUE_AUTH_MODE -eq 'credentials' -and $env:BLUE_JSON_IDENTITY -eq 'true') { throw 'JSON identity requires OIDC; select environment configuration for credentials mode' }
       - name: Sign in with the existing environment OIDC identity
         if: ${{ vars.AZURE_AUTH_MODE != 'credentials' }}
-        uses: azure/login@v2
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       - name: Sign in with explicitly selected service-principal credentials
         if: ${{ vars.AZURE_AUTH_MODE == 'credentials' }}
-        uses: azure/login@v2
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
       - name: Verify exact account and refresh dashboards only

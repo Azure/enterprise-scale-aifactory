@@ -91,7 +91,7 @@ jobs:
       azure_subscription_id: ${{ steps.json_identity.outputs.azure_subscription_id }}
     steps:
       - name: Checkout configuration
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: true
 
@@ -262,7 +262,7 @@ jobs:
       - name: Publish AI Factory region reports
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: aifactory-region-reports-configure-${{ inputs.environment }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/aifactory-region-reports/${{ github.run_id }}-${{ github.run_attempt }}/configure/*.json
