@@ -1,0 +1,81 @@
+name: Bootstrap consumer tests
+
+on:
+  push:
+    branches: [release/v1.25]
+    paths:
+      - '*.sh'
+      - '.env.template'
+      - '.git*'
+      - '.github/**'
+      - 'bootstrap/**'
+      - 'tests/**'
+      - 'aifactory/**'
+      - 'environment_setup/**'
+      - 'azurefactory/**'
+      - 'azure-enterprise-scale-ml'
+      - 'README.md'
+      - 'documentation/**'
+  pull_request:
+    branches: [release/v1.25]
+    paths:
+      - '*.sh'
+      - '.env.template'
+      - '.git*'
+      - '.github/**'
+      - 'bootstrap/**'
+      - 'tests/**'
+      - 'aifactory/**'
+      - 'environment_setup/**'
+      - 'azurefactory/**'
+      - 'azure-enterprise-scale-ml'
+      - 'README.md'
+      - 'documentation/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    name: Bootstrap (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Bash syntax
+        run: |
+          set -euo pipefail
+          for script in ./*.sh; do bash -n "$script"; done
+      - name: Mocked unit and source-contract tests
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tests -p test_github_bootstrap.py -v
+          python -m unittest discover -s tests -p test_consumer.py -v
+          python -m unittest discover -s tests -p test_release_contract.py -v
+          python -m unittest discover -s tests -p test_release_evidence.py -v
+      - name: Disposable local Git integration tests
+        run: python -m unittest discover -s tests -p 'test_*git.py' -v
+      - name: Record exact tested revision
+        env:
+          TESTED_SHA: ${{ github.sha }}
+          TESTED_EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          {
+            printf 'BLUE SHA: `%s`\n\n' "$TESTED_SHA"
+            printf 'Event: `%s`\n\n' "$TESTED_EVENT"
+            printf 'PURPLE gitlink: `%s`\n' "$(git rev-parse HEAD:azure-enterprise-scale-ml)"
+          } >> "$GITHUB_STEP_SUMMARY"

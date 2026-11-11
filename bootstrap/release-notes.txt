@@ -1,0 +1,77 @@
+## BLUE consumer/template release
+
+BLUE bootstraps a repository that you own. PURPLE provides the versioned shared
+implementation through the `azure-enterprise-scale-ml` Git submodule.
+
+This release selects PURPLE `release/v1.25` at exactly:
+`89eca66185366a702b026cec8c938570548c649c`.
+
+The committed gitlink, not the current upstream branch tip, determines the source
+used by ordinary recursive clones. `.gitmodules` names `release/v1.25` for explicit
+future upgrades; bootstrap does not switch the submodule to `main`.
+
+## Newly implemented in BLUE
+
+- Safer full-mirror onboarding restricted to an explicitly confirmed new or empty
+  GitHub destination; configuration-only reruns do not repeat initialization.
+- Shared `.env` parsing and GitHub environment/variable/secret synchronization,
+  selected-environment validation, redacted dry-run output and omitted-secret
+  preservation. No dummy Azure credentials, forced history replacement or editor
+  launch.
+- v1.25 consumer initialization and refresh entry points, current project workflow
+  contracts, and configuration ownership that preserves user edits on safe reruns.
+- Narrow BLUE authentication adapters select OIDC or explicit credentials without
+  deleting existing secrets: credential mode overrides stale OIDC selectors,
+  gateway gains OIDC, and dashboard/health workflows gain credential fallback.
+  The pinned upstream deployment implementation remains unchanged.
+- Separate GitHub mirror, native-template and empty Azure DevOps onboarding routes.
+- Credential-free mocked tests, disposable local Git clone/submodule/mirror tests,
+  and GitHub Actions coverage for Linux and Windows Git Bash.
+- A read-only release-evidence preflight requiring successful Linux and Windows
+  jobs on a push run for the exact release commit.
+
+## Available from PURPLE
+
+Infrastructure templates, lifecycle tooling, Agent Factory and ML Factory are
+available through the submodule, not newly implemented in BLUE. The compatibility
+matrix records the actual consumer entry points and platform-specific limitations:
+
+https://github.com/Azure/enterprise-scale-aifactory/blob/release/v1.25/documentation/bootstrapping.md#compatibility-matrix
+
+Selected upstream source and documentation:
+https://github.com/jostrm/azure-enterprise-scale-ml/tree/89eca66185366a702b026cec8c938570548c649c
+
+## Upgrade and prerequisites
+
+Read `documentation/bootstrapping.md` before upgrading a v1.24 consumer. Preserve
+your configuration and existing `.env`, review template differences, deliberately
+update the submodule gitlink and commit the reviewed result. Do not rerun mirror
+bootstrap against a populated repository.
+
+Repository setup requires Git, Bash and Python 3.10+. GitHub synchronization also
+requires GitHub CLI authentication, organization SSO authorization where required,
+and appropriate repository/environment permissions. Azure DevOps service
+connections, pipeline authorization and variable groups are configured separately;
+GitHub `.env` synchronization does not configure Azure DevOps.
+
+## Breaking changes and limitations
+
+- Bootstrap no longer deploys Azure, creates placeholder secrets, follows PURPLE
+  `main`, rewrites history, deletes an existing consumer or overwrites local
+  configuration. Deployment is a separate, explicitly authorized operation.
+- Obsolete separate ESML/GenAI workflow entry points are replaced by the selected
+  release's unified project/phase interfaces. Review the migration matrix rather
+  than retaining stale workflow copies.
+- Native GitHub template generation offers the default branch or all branches.
+  Until BLUE's default branch changes through a separate decision, select
+  "Include all branches" and use `release/v1.25` in the generated consumer. The
+  repository administrator must enable the repository-level template setting;
+  a code commit cannot enable it.
+- Native template generation has not been live-tested using a disposable remote
+  repository. Follow the documented gitlink inspection and repair procedure.
+- Upstream platform differences and example-version inconsistencies are documented;
+  this release does not claim GitHub/Azure DevOps parity or PURPLE main-only features.
+
+No Azure deployment was performed or validated by repository/bootstrap tests.
+Optional Azure services remain optional; feature flags alone do not guarantee that
+existing resources are deleted or all charges stop.

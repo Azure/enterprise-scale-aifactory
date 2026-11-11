@@ -83,6 +83,12 @@ celerybeat-schedule
 
 # Environments
 .env
+.env.*
+!.env.template
+.bootstrap-mirror-*/
+.bootstrap-test-*/
+.aifactory-backups/
+.consumer-test-work/
 .venv
 env/
 venv/

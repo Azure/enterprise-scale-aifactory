@@ -1,0 +1,318 @@
+name: infra-project
+# AIFACTORY_PROJECT_DEPLOYMENT_CONTRACT=1
+run-name: infra-project ${{ inputs.environment }} [${{ inputs.deployment_id || 'manual' }}]
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: GitHub Environment to load variables/secrets from [dev,stage,prod]
+        required: true
+        default: dev
+        type: choice
+        options:
+          - dev
+          - stage
+          - prod
+      config_file:
+        description: Repository-relative canonical AI Factory JSON configuration file
+        required: false
+        default: 'aifactory/variables.json'
+        type: string
+      config_secret:
+        description: Environment secret containing this run's immutable configuration
+        type: string
+        required: false
+        default: AIFACTORY_CONFIG_JSON
+      json_identity_auth:
+        description: Authenticate with JSON-provided OpenID Connect identity selectors
+        type: boolean
+        required: false
+        default: false
+      deployment_id:
+        description: Unique reviewed deployment correlation UUID
+        type: string
+        required: false
+        default: ''
+      project_number:
+        description: Reviewed project identity (empty preserves legacy behavior)
+        type: string
+        required: false
+        default: ''
+      config_hash:
+        description: SHA256 of the reviewed configuration
+        type: string
+        required: false
+        default: ''
+      runner_selection:
+        description: Build runner selection (self-hosted uses JSON selfHostedRunnerOS, default Windows)
+        required: false
+        default: from-config
+        type: choice
+        options:
+          - from-config
+          - github-hosted
+          - self-hosted
+          - self-hosted-windows
+          - self-hosted-linux
+      self_hosted_runner_label:
+        description: Custom label assigned to the self-hosted runner
+        required: false
+        default: ''
+        type: string
+      admin_vm_runner_label:
+        description: Deprecated compatibility alias for self_hosted_runner_label
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  configure:
+    name: Resolve configuration and runner
+    runs-on: ubuntu-latest
+    environment: ${{ fromJSON(vars.AIFACTORY_GITHUB_ENVIRONMENTS || '{"dev":"dev","stage":"stage","prod":"prod"}')[inputs.environment] }}
+    env:
+      AIFACTORY_CONFIG_JSON: ${{ !inputs.json_identity_auth && secrets[inputs.config_secret] || '' }}
+      AIFACTORY_REPORT_JOB: configure
+      admin_location: ${{ vars.AIFACTORY_LOCATION }}
+      dev_test_prod_sub_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      tenantId: ${{ secrets.TENANT_ID }}
+      dev_test_prod: ${{ inputs.environment }}
+    outputs:
+      runs_on: ${{ steps.runner.outputs.runs_on }}
+      use_self_hosted: ${{ steps.runner.outputs.use_self_hosted }}
+      runner_label: ${{ steps.runner.outputs.runner_label }}
+      azure_client_id: ${{ steps.json_identity.outputs.azure_client_id }}
+      azure_tenant_id: ${{ steps.json_identity.outputs.azure_tenant_id }}
+      azure_subscription_id: ${{ steps.json_identity.outputs.azure_subscription_id }}
+    steps:
+      - name: Checkout configuration
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Materialize protected JSON configuration
+        if: ${{ !inputs.json_identity_auth && inputs.config_file != '' && env.AIFACTORY_CONFIG_JSON != '' }}
+        shell: bash
+        env:
+          CONFIG_FILE: ${{ inputs.config_file }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$(dirname "$CONFIG_FILE")"
+          printf '%s' "$AIFACTORY_CONFIG_JSON" > "$CONFIG_FILE"
+
+      - name: Resolve JSON OpenID Connect identity
+        id: json_identity
+        if: ${{ inputs.json_identity_auth }}
+        shell: bash
+        env:
+          CONFIG_FILE: ${{ inputs.config_file }}
+        run: |
+          set -euo pipefail
+          python3 "azure-enterprise-scale-ml/environment_setup/aifactory/bicep/scripts/apply-json-config-overrides.py" \
+            --file "$CONFIG_FILE" \
+            --environment "${{ inputs.environment }}" \
+            --format github \
+            --github-workflow "azure-enterprise-scale-ml/environment_setup/aifactory/bicep/copy_to_local_settings/github-actions/infra-project-phase.yml" \
+            --github-identity-output
+
+      - name: Validate reviewed project and target
+        if: ${{ inputs.deployment_id != '' || inputs.project_number != '' || inputs.config_hash != '' || inputs.config_file == 'aifactory/.reviewed-project-config.json' }}
+        shell: bash
+        env:
+          PROJECT_NUMBER: ${{ inputs.project_number }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+          CONFIG_HASH: ${{ inputs.config_hash }}
+          CONFIG_FILE: ${{ inputs.config_file }}
+          CONFIG_SECRET: ${{ inputs.config_secret }}
+          DEPLOYMENT_ID: ${{ inputs.deployment_id }}
+          JSON_IDENTITY_AUTH: ${{ inputs.json_identity_auth }}
+          EXPECTED_SUBSCRIPTION: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          EXPECTED_TENANT: ${{ secrets.TENANT_ID }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, re, uuid
+          from pathlib import Path
+          if os.environ["JSON_IDENTITY_AUTH"] == "true":
+              raise SystemExit("JSON identity mode cannot replace the reviewed deployment secret contract")
+          if not all(os.environ[key] for key in ("DEPLOYMENT_ID", "PROJECT_NUMBER", "CONFIG_HASH", "CONFIG_FILE", "CONFIG_SECRET")):
+              raise SystemExit("Reviewed deployments require deployment_id, project_number, config_hash, config_file and config_secret")
+          uuid.UUID(os.environ["DEPLOYMENT_ID"])
+          path = Path(os.environ["CONFIG_FILE"])
+          if path.as_posix() != "aifactory/.reviewed-project-config.json":
+              raise SystemExit("Reviewed deployment configuration path mismatch")
+          raw = path.read_bytes()
+          protected = os.environ.get("AIFACTORY_CONFIG_JSON", "")
+          if not os.environ["CONFIG_SECRET"] or not protected:
+              raise SystemExit("Reviewed deployment requires its run-specific configuration secret")
+          if raw != protected.encode("utf-8"):
+              raise SystemExit("Reviewed configuration file differs from the run-specific secret")
+          if hashlib.sha256(raw).hexdigest() != os.environ["CONFIG_HASH"]:
+              raise SystemExit("Reviewed deployment configuration hash mismatch")
+          payload = json.loads(raw)
+          target = os.environ["TARGET_ENVIRONMENT"]
+          values = payload["dev" if target == "dev" else "stage_prod"]
+          if str(values.get("project_number_000", "")).zfill(3) != os.environ["PROJECT_NUMBER"]:
+              raise SystemExit("Reviewed deployment project mismatch")
+          guid = r"[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}"
+          subscription = values.get({"dev":"dev_sub_id","stage":"test_sub_id","prod":"prod_sub_id"}[target], "")
+          if not re.fullmatch(guid, str(subscription)) or not re.fullmatch(guid, str(values.get("tenantId", ""))):
+              raise SystemExit("Exact target subscription and tenant required; Dev fallback forbidden")
+          if str(subscription).lower() != os.environ["EXPECTED_SUBSCRIPTION"].lower() or str(values["tenantId"]).lower() != os.environ["EXPECTED_TENANT"].lower():
+              raise SystemExit("GitHub environment subscription/tenant does not match the reviewed target")
+          PY
+
+      - name: Resolve runner from workflow input and JSON
+        id: runner
+        shell: bash
+        env:
+          CONFIG_FILE: ${{ inputs.config_file }}
+          RUNNER_SELECTION: ${{ inputs.runner_selection }}
+          SELF_HOSTED_RUNNER_LABEL: ${{ inputs.self_hosted_runner_label }}
+          LEGACY_ADMIN_VM_RUNNER_LABEL: ${{ inputs.admin_vm_runner_label }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          config = {}
+          config_file = os.environ["CONFIG_FILE"].strip()
+          if config_file:
+              config_path = Path(config_file)
+              if not config_path.is_file():
+                  raise SystemExit(f"Configuration file not found: {config_path}")
+
+              payload = json.loads(config_path.read_text(encoding="utf-8-sig"))
+              environment = os.environ["TARGET_ENVIRONMENT"]
+              section = "stage_prod" if environment != "dev" and isinstance(payload.get("stage_prod"), dict) else "dev"
+              config = payload.get(section)
+              if not isinstance(config, dict):
+                  raise SystemExit(f"Configuration file has no object for section '{section}'")
+              if section == "stage_prod":
+                  baseline = payload.get("dev", {})
+                  if not isinstance(baseline, dict):
+                      raise SystemExit("Configuration file has no object for section 'dev'")
+                  config = {**baseline, **config}
+
+          def as_bool(value):
+              return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+          selection = os.environ["RUNNER_SELECTION"].strip() or "from-config"
+          explicit_os = {"self-hosted-windows": "Windows", "self-hosted-linux": "Linux"}
+          if selection in {"self-hosted", *explicit_os}:
+              use_self_hosted = True
+          elif selection == "github-hosted":
+              use_self_hosted = False
+          elif selection == "from-config":
+              use_self_hosted = (
+                  as_bool(config.get("useSelfHostedBuildAgent", False))
+              )
+          else:
+              raise SystemExit("Unsupported runner_selection; choose from-config, github-hosted, self-hosted, self-hosted-windows or self-hosted-linux")
+
+          runner_os = "Linux"
+          if use_self_hosted:
+              configured_os = config.get("selfHostedRunnerOS", "Windows")
+              if not isinstance(configured_os, str) or configured_os.strip().lower() not in {"windows", "linux"}:
+                  raise SystemExit("selfHostedRunnerOS must be Windows or Linux")
+              runner_os = explicit_os.get(selection, configured_os.strip().capitalize())
+
+          runner_label = (
+              os.environ["SELF_HOSTED_RUNNER_LABEL"].strip()
+              or os.environ["LEGACY_ADMIN_VM_RUNNER_LABEL"].strip()
+              or str(config.get("selfHostedRunnerLabel", "")).strip()
+              or "aifactory-admin-vm"
+          )
+          if any(ord(char) < 32 or ord(char) == 127 for char in runner_label):
+              raise SystemExit("Self-hosted runner label must not contain control characters")
+          runs_on = (
+              ["self-hosted", runner_os, runner_label]
+              if use_self_hosted
+              else "ubuntu-latest"
+          )
+
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"runs_on={json.dumps(runs_on, separators=(',', ':'))}\n")
+              output.write(f"use_self_hosted={str(use_self_hosted).lower()}\n")
+              output.write(f"runner_label={runner_label}\n")
+
+          print(f"Runner selection: {'self-hosted/' + runner_os + '/' + runner_label if use_self_hosted else 'ubuntu-latest'}")
+          PY
+
+      - name: Report final pipeline job result (offline)
+        if: always()
+        continue-on-error: true
+        shell: bash
+        env:
+          AIFACTORY_REPORT_JOB_STATUS: ${{ job.status }}
+          AIFACTORY_REPORT_DIR: ${{ runner.temp }}/aifactory-region-reports/${{ github.run_id }}-${{ github.run_attempt }}/configure
+        run: |
+          helper="azure-enterprise-scale-ml/environment_setup/aifactory/bicep/scripts/write-pipeline-region-report.sh"
+          if [ -f "$helper" ]; then bash "$helper"; else
+            echo "WARNING: AI Factory region report helper is unavailable (checkout may have failed)."
+          fi
+
+      - name: Publish AI Factory region reports
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: aifactory-region-reports-configure-${{ inputs.environment }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/aifactory-region-reports/${{ github.run_id }}-${{ github.run_attempt }}/configure/*.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Remove run-specific reviewed configuration
+        if: ${{ always() && inputs.deployment_id != '' }}
+        shell: bash
+        run: python3 -c 'from pathlib import Path; Path("aifactory/.reviewed-project-config.json").unlink(missing_ok=True)'
+
+  deploy_infrastructure:
+    name: Project (Networking + Services)
+    needs: configure
+    uses: ./.github/workflows/infra-project-phase.yml
+    with:
+      environment: ${{ inputs.environment }}
+      config_file: ${{ inputs.config_file }}
+      config_secret: ${{ inputs.config_secret }}
+      json_identity_auth: ${{ inputs.json_identity_auth }}
+      deployment_id: ${{ inputs.deployment_id }}
+      config_hash: ${{ inputs.config_hash }}
+      phase: infra
+      runs_on: ${{ needs.configure.outputs.runs_on }}
+      use_self_hosted: ${{ needs.configure.outputs.use_self_hosted }}
+      runner_label: ${{ needs.configure.outputs.runner_label }}
+      azure_client_id: ${{ needs.configure.outputs.azure_client_id }}
+      azure_tenant_id: ${{ needs.configure.outputs.azure_tenant_id }}
+      azure_subscription_id: ${{ needs.configure.outputs.azure_subscription_id }}
+    secrets: inherit
+
+  deploy_foundry:
+    name: AI Foundry (Fresh Runner Budget)
+    needs:
+      - configure
+      - deploy_infrastructure
+    if: ${{ needs.deploy_infrastructure.result == 'success' && needs.deploy_infrastructure.outputs.skip_foundry != 'true' }}
+    uses: ./.github/workflows/infra-project-phase.yml
+    with:
+      environment: ${{ inputs.environment }}
+      config_file: ${{ inputs.config_file }}
+      config_secret: ${{ inputs.config_secret }}
+      json_identity_auth: ${{ inputs.json_identity_auth }}
+      deployment_id: ${{ inputs.deployment_id }}
+      config_hash: ${{ inputs.config_hash }}
+      phase: foundry
+      runs_on: ${{ needs.configure.outputs.runs_on }}
+      use_self_hosted: ${{ needs.configure.outputs.use_self_hosted }}
+      runner_label: ${{ needs.configure.outputs.runner_label }}
+      azure_client_id: ${{ needs.configure.outputs.azure_client_id }}
+      azure_tenant_id: ${{ needs.configure.outputs.azure_tenant_id }}
+      azure_subscription_id: ${{ needs.configure.outputs.azure_subscription_id }}
+    secrets: inherit

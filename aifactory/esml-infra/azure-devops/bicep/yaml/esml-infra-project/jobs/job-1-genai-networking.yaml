@@ -1,13 +1,364 @@
+parameters:
+  - name: serviceConnection
+    type: string
+  - name: serviceConnectionSeeding
+    type: string
+  - name: linuxRunner
+    type: boolean
+    default: false
 steps:
-- checkout: self # Required as first property. Alias of the repository resource to check out or 'none'. 
-  submodules: true # set to 'true' for a single level of submodules or 'recursive' to get submodules of submodules. Default is not to fetch submodules.
-  continueOnError: false # Continue running even on failure?.  (false,n,no,off,on,true,y,yes)
-  displayName: GIT # Human-readable name for the task. 
-  enabled: true # Run this task when the job runs?.  (false,n,no,off,on,true,y,yes)
-  name: GIT # ID of the step.  ([-_A-Za-z0-9]*)
+- task: PythonScript@0
+  displayName: '00_apply_json_config_override'
+  condition: and(succeeded(), ne(variables['configOverrideFile'], ''))
+  inputs:
+    scriptPath: '$(System.DefaultWorkingDirectory)/azure-enterprise-scale-ml/environment_setup/aifactory/bicep/scripts/apply-json-config-overrides.py'
+    arguments: '--file "$(configOverrideFile)" --environment "$(dev_test_prod)" --format azure-devops'
+    workingDirectory: '$(System.DefaultWorkingDirectory)'
+- template: ../../variables/logic-app-network-steps.yaml
+- template: ../../variables/persona-access-steps.yaml
+  parameters:
+    serviceConnection: ${{ parameters.serviceConnection }}
+    scope: project
+- task: AzureCLI@2
+  displayName: '00_resolve_network_env_placeholders'
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnection }}
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      #!/bin/bash
+
+      # ---------------------------------------------------------------
+      # BYO_subnets guard: evaluated FIRST before any variable usage.
+      # When BYO_subnets=false (default), network_env and all subnet name
+      # variables are documentation examples only and must be treated as
+      # empty so the networking Bicep falls back to its naming convention.
+      # When BYO_subnets=true, the values from variables.yaml are used.
+      # ---------------------------------------------------------------
+      BYO="$(BYO_subnets)"
+      if [ "$BYO" = "true" ]; then
+        NETWORK_ENV="$(network_env)"
+        echo "BYO_subnets=true: using network_env=$NETWORK_ENV and provided subnet names"
+      else
+        NETWORK_ENV=""
+        echo "BYO_subnets=false: network_env forced to empty; Bicep/PS1 will use naming convention"
+        echo "##vso[task.setvariable variable=network_env]"
+        echo "##vso[task.setvariable variable=subnetCommon]"
+        echo "##vso[task.setvariable variable=subnetCommonScoring]"
+        echo "##vso[task.setvariable variable=subnetCommonPowerbiGw]"
+        echo "##vso[task.setvariable variable=subnetProjGenAI]"
+        echo "##vso[task.setvariable variable=subnetProjAKS]"
+        echo "##vso[task.setvariable variable=subnetProjAKS2]"
+        echo "##vso[task.setvariable variable=subnetProjACA]"
+        echo "##vso[task.setvariable variable=subnetProjACA2]"
+        echo "##vso[task.setvariable variable=subnetProjWebapp]"
+        echo "##vso[task.setvariable variable=subnetProjLogicapp]"
+        echo "##vso[task.setvariable variable=subnetProjDatabricksPublic]"
+        echo "##vso[task.setvariable variable=subnetProjDatabricksPrivate]"
+      fi
+
+      VNET_RG="$(vnetResourceGroup_param)"
+      VNET_NAME="$(vnetNameFull_param)"
+
+      echo "Original vnetResourceGroup_param: $VNET_RG"
+      echo "Original vnetNameFull_param: $VNET_NAME"
+      echo "network_env value: $NETWORK_ENV"
+
+      # Replace <network_env> placeholder in VNET_RG if it exists
+      if [[ "$VNET_RG" == *"<network_env>"* ]]; then
+        echo "Found <network_env> placeholder in vnetResourceGroup_param"
+        VNET_RG="${VNET_RG//<network_env>/$NETWORK_ENV}"
+        echo "Replaced with network_env value: $NETWORK_ENV"
+      fi
+
+      # Replace <network_env> placeholder in VNET_NAME if it exists
+      if [[ "$VNET_NAME" == *"<network_env>"* ]]; then
+        echo "Found <network_env> placeholder in vnetNameFull_param"
+        VNET_NAME="${VNET_NAME//<network_env>/$NETWORK_ENV}"
+        echo "Replaced with network_env value: $NETWORK_ENV"
+      fi
+
+      # Set resolved values as pipeline variables for reuse
+      echo "##vso[task.setvariable variable=vnetResourceGroup_resolved]$VNET_RG"
+      echo "##vso[task.setvariable variable=vnetNameFull_resolved]$VNET_NAME"
+
+      echo "Resolved vnetResourceGroup: $VNET_RG"
+      echo "Resolved vnetNameFull: $VNET_NAME"
+      echo "Variables set: vnetResourceGroup_resolved, vnetNameFull_resolved, network_env=$NETWORK_ENV"
+# ---------------------------------------------------------------------------
+# PREFLIGHT (config-only, fail-fast): validate CIDR sanity, BYO subnet names,
+# AKS networking and IP allowlists BEFORE this job creates the project subnets
+# (when BYO_subnets=false). Uses --skip-azure-lookups so it is fast/offline; the
+# heavier regional/quota/policy/model checks run later in job-2 (services).
+# Set preflight_skip=true to bypass; preflight_strict=true to also fail on warnings.
+# ---------------------------------------------------------------------------
+- task: AzureCLI@2
+  displayName: '00_preflight_network_cidr_checks'
+  condition: and(succeeded(), ne(variables['debug_disable_validation_tasks'], 'true'))
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnection }}
+    scriptType: bash
+    scriptLocation: scriptPath
+    scriptPath: '$(System.DefaultWorkingDirectory)/azure-enterprise-scale-ml/environment_setup/aifactory/bicep/scripts/preflight.sh'
+    arguments: '--skip-azure-lookups --scope project --environment "$(dev_test_prod)" --subscription "$(dev_test_prod_sub_id)" --location "$(admin_location)"'
+  env:
+    PREFLIGHT_SKIP: $(preflight_skip)
+    PREFLIGHT_REPORT_DIR: $(Build.ArtifactStagingDirectory)/aifactory-region-reports/$(System.JobId)-$(System.JobAttempt)
+    AIFACTORY_REPORT_TENANT_ID: $(tenantId)
+    # Key Vault principal gate. Mapped explicitly because secret variables are never auto-mapped.
+    technical_admins_ad_object_id: $(technical_admins_ad_object_id)
+    admin_location: $(admin_location)
+    BYO_subnets: $(BYO_subnets)
+    common_vnet_cidr: $(common_vnet_cidr)
+    common_subnet_cidr: $(common_subnet_cidr)
+    common_subnet_scoring_cidr: $(common_subnet_scoring_cidr)
+    common_pbi_subnet_cidr: $(common_pbi_subnet_cidr)
+    common_bastion_subnet_cidr: $(common_bastion_subnet_cidr)
+    dev_cidr_range: $(dev_cidr_range)
+    test_cidr_range: $(test_cidr_range)
+    prod_cidr_range: $(prod_cidr_range)
+    subnetCommon: $(subnetCommon)
+    subnetCommonScoring: $(subnetCommonScoring)
+    subnetCommonPowerbiGw: $(subnetCommonPowerbiGw)
+    subnetProjGenAI: $(subnetProjGenAI)
+    subnetProjAKS: $(subnetProjAKS)
+    subnetProjAKS2: $(subnetProjAKS2)
+    subnetProjACA: $(subnetProjACA)
+    subnetProjACA2: $(subnetProjACA2)
+    subnetProjWebapp: $(subnetProjWebapp)
+    subnetProjLogicapp: $(subnetProjLogicapp)
+    enableLogicApps: $(enableLogicApps)
+    logicAppType: $(logicAppType)
+    enablePublicAccessWithPerimeter: $(enablePublicAccessWithPerimeter)
+    subnetProjDatabricksPublic: $(subnetProjDatabricksPublic)
+    subnetProjDatabricksPrivate: $(subnetProjDatabricksPrivate)
+    byoASEv3: $(byoASEv3)
+    byoAseFullResourceId: $(byoAseFullResourceId)
+    byoAseAppServicePlanResourceId: $(byoAseAppServicePlanResourceId)
+    aksEnablePrivateCluster: $(aksEnablePrivateCluster)
+    aksOutboundType: $(aksOutboundType)
+    aksPrivateDNSZone: $(aksPrivateDNSZone)
+    aksAzureFirewallPrivateIp: $(aksAzureFirewallPrivateIp)
+    enableAKS: $(enableAKS)
+    enableAksForAzureML: $(enableAksForAzureML)
+    enableAIFoundry: $(enableAIFoundry)
+    enableWebApp: $(enableWebApp)
+    enableFunction: $(enableFunction)
+    enableContainerApps: $(enableContainerApps)
+    enableDatabricks: $(enableDatabricks)
+    disableAgentNetworkInjection: $(disableAgentNetworkInjection)
+    project_IP_whitelist: $(project_IP_whitelist)
+    acr_IP_whitelist: $(acr_IP_whitelist)
+- task: AzureCLI@2
+  displayName: '00_validate_byo_subnet_variables'
+  condition: and(succeeded(), eq(variables['BYO_subnets'], 'true'), ne(variables['debug_disable_validation_tasks'], 'true'))
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnection }}
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      #!/bin/bash
+      # ---------------------------------------------------------------
+      # Validate that all subnet variables required by the enabled
+      # services are actually set when BYO_subnets=true.
+      # Mapping:
+      #   subnetProjGenAI             -> enableAIFoundry=true
+      #   subnetProjAKS               -> enableAksForAzureML=true
+      #   subnetProjAKS2              -> enableAksForAzureML=true
+      #   subnetProjACA               -> enableContainerApps=true
+      #   subnetProjACA2              -> enableAIFoundry=true AND disableAgentNetworkInjection=false
+      #   subnetProjWebapp            -> enableWebApp=true OR enableFunction=true
+      #   subnetProjDatabricksPublic  -> enableDatabricks=true
+      #   subnetProjDatabricksPrivate -> enableDatabricks=true
+      # ---------------------------------------------------------------
+      ERRORS=0
+
+      check_subnet() {
+        local varName="$1"
+        local varValue="$2"
+        local reason="$3"
+        if [ -z "$varValue" ]; then
+          echo "##vso[task.logissue type=error]BYO_subnets=true and $reason but '$varName' is not set in variables.yaml. Please provide a value."
+          ERRORS=$((ERRORS + 1))
+        else
+          echo "✅ $varName is set: $varValue"
+        fi
+      }
+
+      if [ "$(enableAIFoundry)" = "true" ]; then
+        check_subnet "subnetProjGenAI" "$(subnetProjGenAI)" "enableAIFoundry=true"
+      fi
+
+      if [ "$(enableAksForAzureML)" = "true" ]; then
+        check_subnet "subnetProjAKS"  "$(subnetProjAKS)"  "enableAksForAzureML=true"
+        check_subnet "subnetProjAKS2" "$(subnetProjAKS2)" "enableAksForAzureML=true"
+      fi
+
+      if [ "$(enableContainerApps)" = "true" ]; then
+        check_subnet "subnetProjACA" "$(subnetProjACA)" "enableContainerApps=true"
+      fi
+
+      if [ "$(enableAIFoundry)" = "true" ] && [ "$(disableAgentNetworkInjection)" != "true" ]; then
+        check_subnet "subnetProjACA2" "$(subnetProjACA2)" "enableAIFoundry=true and disableAgentNetworkInjection=false"
+      fi
+
+      if [ "$(enableWebApp)" = "true" ] || [ "$(enableFunction)" = "true" ]; then
+        check_subnet "subnetProjWebapp" "$(subnetProjWebapp)" "enableWebApp=true or enableFunction=true"
+      fi
+
+      if [ "$(enableDatabricks)" = "true" ]; then
+        check_subnet "subnetProjDatabricksPublic"  "$(subnetProjDatabricksPublic)"  "enableDatabricks=true"
+        check_subnet "subnetProjDatabricksPrivate" "$(subnetProjDatabricksPrivate)" "enableDatabricks=true"
+      fi
+
+      if [ "$ERRORS" -gt 0 ]; then
+        echo "❌ $ERRORS required BYO subnet variable(s) are missing. Set them in variables.yaml."
+        exit 1
+      fi
+      echo "✅ All required BYO subnet variables are set."
+- task: AzureCLI@2
+  displayName: '00_validate_project_subnet_exists'
+  condition: and(succeeded(), ne(variables['debug_disable_validation_tasks'], 'true'), ne(variables['BYO_subnets'], 'true'))
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnection }}
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      #!/bin/bash
+      
+      az account set --subscription "$(dev_test_prod_sub_id)"
+      
+      # Construct subnet name based on project number
+      PROJECT_SUBNET_NAME="snt-prj$(project_number_000)-aks"
+      echo "Checking for subnet: $PROJECT_SUBNET_NAME"
+      
+      # Get vnet information from variables (use resolved if available), with fallback to naming convention
+      VNET_NAME="$(vnetNameFull_resolved)"
+      VNET_RG="$(vnetResourceGroup_resolved)"
+      
+      # Fallback to original params if resolved variables are empty
+      if [ -z "$VNET_NAME" ] || [[ "$VNET_NAME" == \$\(vnetNameFull_resolved\)* ]]; then
+        VNET_NAME="$(vnetNameFull_param)"
+      fi
+      
+      if [ -z "$VNET_RG" ] || [[ "$VNET_RG" == \$\(vnetResourceGroup_resolved\)* ]]; then
+        VNET_RG="$(vnetResourceGroup_param)"
+      fi
+      
+      echo "Using VNET_NAME: $VNET_NAME"
+      echo "Using VNET_RG: $VNET_RG"
+
+      # If VNET variables are not set (empty or unexpanded), use naming convention
+      if [ -z "$VNET_NAME" ] || [[ "$VNET_NAME" == \$\(vnetNameFull_param\)* ]]; then
+        VNET_NAME="$(vnetNameBase)-$(admin_locationSuffix)-$(dev_test_prod)$(admin_commonResourceSuffix)"
+        echo "VNET name not set, using naming convention: $VNET_NAME"
+      else
+        echo "Using provided VNET name: $VNET_NAME"
+      fi
+
+      if [ -z "$VNET_RG" ] || [[ "$VNET_RG" == \$\(vnetResourceGroup_param\)* ]]; then
+        # Use the common resource group naming convention
+        VNET_RG="$(admin_aifactoryPrefixRG)$(vnetResourceGroupBase)-$(admin_locationSuffix)-$(dev_test_prod)$(admin_aifactorySuffixRG)"
+        echo "VNET resource group not set, using naming convention: $VNET_RG"
+      fi
+      
+      echo "VNET Name: $VNET_NAME"
+      echo "VNET Resource Group: $VNET_RG"
+      
+      # First check if VNET exists
+      if ! az network vnet show --name "$VNET_NAME" --resource-group "$VNET_RG" &> /dev/null; then
+        echo "❌ ERROR: VNET '$VNET_NAME' does not exist in resource group '$VNET_RG'"
+        echo "Please ensure the common networking infrastructure is deployed first."
+        exit 1
+      fi
+      
+      # Check if project AKS subnet exists
+      if az network vnet subnet show --name "$PROJECT_SUBNET_NAME" --vnet-name "$VNET_NAME" --resource-group "$VNET_RG" &> /dev/null; then
+        echo "ℹ️ INFO: Some subnets for project $(project_number_000) already exist. I will add subnets if not exists, but not touch existing."
+        echo ""
+        echo "Found existing subnet: $PROJECT_SUBNET_NAME"
+        echo "Target VNET: $VNET_NAME"
+        echo "Target Resource Group: $VNET_RG"
+        echo ""
+        echo "Options:"
+        echo "1. If you want to recrease all subnets - delete existing subnets before re-running this pipeline"
+        echo "2. If you dont want to touch ANY subnets, and not add any potential new ones, set variable 'runNetworkingVar' to 'false' in VARIABLES.YAML, and this JOB will be skipped next time"
+        echo ""
+        exit 0
+      else
+        echo "✅ Subnet '$PROJECT_SUBNET_NAME' does not exist. Proceeding with subnet creation, with create if not EXISTS logic."
+      fi
+- task: PowerShell@2
+  displayName: '00_check_submodule_and_paths'
+  condition: and(succeeded(), ne(variables['debug_disable_validation_tasks'], 'true'))
+  inputs:
+    pwsh: ${{ parameters.linuxRunner }}
+    targetType: 'inline'
+    script: |
+      Write-Host "=== CHECKING SUBMODULE AND PATHS ==="
+      Write-Host "Current directory: $(Get-Location)"
+      Write-Host "Working directory: $(System.DefaultWorkingDirectory)"
+      
+      # Change to the repository root
+      Set-Location "$(System.DefaultWorkingDirectory)"
+      Write-Host "Changed to: $(Get-Location)"
+      
+      # Check if .gitmodules exists
+      if (Test-Path ".gitmodules") {
+        Write-Host "✅ .gitmodules file found"
+        Write-Host "Contents of .gitmodules:"
+        Get-Content ".gitmodules"
+        
+        # Check if submodule directory exists
+        if (Test-Path "azure-enterprise-scale-ml") {
+          Write-Host "✅ azure-enterprise-scale-ml directory exists"
+          
+          # Check if the required script path exists
+          $scriptPath = "azure-enterprise-scale-ml/environment_setup/aifactory/bicep/scripts"
+          if (Test-Path $scriptPath) {
+            Write-Host "✅ Scripts directory exists: $scriptPath"
+            Write-Host "Contents of scripts directory:"
+            Get-ChildItem $scriptPath | Format-Table Name
+            
+            $subnetScriptPath = "$scriptPath/subnetCalc_v2.ps1"
+            if (Test-Path $subnetScriptPath) {
+              Write-Host "✅ subnetCalc_v2.ps1 script exists"
+            } else {
+              Write-Host "❌ subnetCalc_v2.ps1 script NOT found"
+              Write-Host "Available PowerShell scripts in directory:"
+              Get-ChildItem $scriptPath -Filter "*.ps1" | Format-Table Name
+            }
+          } else {
+            Write-Host "❌ Scripts directory NOT found: $scriptPath"
+            Write-Host "Contents of azure-enterprise-scale-ml:"
+            Get-ChildItem "azure-enterprise-scale-ml" | Format-Table Name, IsDirectory
+          }
+        } else {
+          Write-Host "❌ azure-enterprise-scale-ml directory NOT found"
+          Write-Host "Attempting manual submodule initialization..."
+          
+          git submodule init
+          git submodule update --recursive
+          
+          if (Test-Path "azure-enterprise-scale-ml") {
+            Write-Host "✅ Submodule successfully initialized"
+          } else {
+            Write-Host "❌ Failed to initialize submodule"
+            exit 1
+          }
+        }
+      } else {
+        Write-Host "❌ .gitmodules file NOT found"
+        exit 1
+      }
+      
+      Write-Host "Final directory contents:"
+      Get-ChildItem | Format-Table Name, IsDirectory
+      Write-Host "=== END SUBMODULE CHECK ==="
 
 - task: AzureCLI@2
   displayName: '00_pwsh_print_info'
+  condition: and(succeeded(), ne(variables['debug_disable_validation_tasks'], 'true'))
   inputs:
     azureSubscription: ${{ parameters.serviceConnection }}
     scriptType: pscore
@@ -21,75 +372,587 @@ steps:
       Write-Output "PowerShell Version: $($PSVersionTable.PSVersion)"
 - task: AzureCLI@2
   displayName: '01_pwsh_get_IP_for_ADO_agent'
-  inputs:
-    azureSubscription: ${{ parameters.serviceConnection }}
-    scriptType: ps
-    scriptLocation: 'inlineScript'
-    inlineScript: |
-      $resp = Invoke-RestMethod http://ipinfo.io/json | Select -exp ip
-      Write-Host $resp
-      Write-Host "##vso[task.setvariable variable=admin_ip_fw]$resp"
-      $ipAddr = $resp
-      Write-Host "ipAddr is: $(admin_ip_fw) or $ipAddr"
-
-- task: AzureCLI@2
-  displayName: '02_az_set_ip_to_seeding_keyvault_FW_whitelist'
+  condition: and(succeeded(), ne(variables['disable_whitelisting_for_build_agents'], 'true'))
   inputs:
     azureSubscription: ${{ parameters.serviceConnection }}
     scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      set -uo pipefail
+      # Detect the build agent's public IPv4. A bare `curl ... ||` chain is unreliable because
+      # ipinfo.io can return an EMPTY body while still exiting 0, leaving admin_ip_fw empty and
+      # breaking task 02 with "'' does not appear to be an IPv4 or IPv6 network". Validate each.
+      is_valid_ipv4() {
+        local ip="$1" octet
+        local -a octets
+        IFS='.' read -r -a octets <<< "$ip"
+        [ "${#octets[@]}" -eq 4 ] || return 1
+        for octet in "${octets[@]}"; do
+          [[ "$octet" =~ ^[0-9]{1,3}$ ]] || return 1
+          ((10#$octet <= 255)) || return 1
+        done
+      }
+
+      PRIMARY_IP=""
+      for svc in "https://api.ipify.org" "https://checkip.amazonaws.com" "https://ifconfig.me/ip" "http://ipinfo.io/ip"; do
+        candidate=$(curl -s --max-time 10 "$svc" | tr -d '[:space:]')
+        echo "  $svc -> '${candidate}'"
+        if is_valid_ipv4 "$candidate"; then
+          PRIMARY_IP="$candidate"
+          echo "Selected public IP '$PRIMARY_IP' from $svc"
+          break
+        fi
+      done
+
+      if [ -z "$PRIMARY_IP" ]; then
+        echo "##[error]Could not determine the build agent public IPv4 from any detection service."
+        echo "##[error]Whitelisting cannot proceed. Set disable_whitelisting_for_build_agents=true if the agent IP is already allowed, or retry."
+        exit 1
+      fi
+
+      echo "Primary IP: $PRIMARY_IP"
+      echo "##vso[task.setvariable variable=admin_ip_fw]$PRIMARY_IP"
+
+      # Diagnostics: list local interfaces (not used for whitelisting; the public IP above is authoritative).
+      # The `ip` command is absent on Windows-hosted agents, so guard it to avoid a spurious error line.
+      if command -v ip >/dev/null 2>&1; then
+        echo "All network interfaces:"
+        ip addr show | grep 'inet ' | grep -v '127.0.0.1' | awk '{print $2}' | cut -d'/' -f1
+      fi
+
+      # Keep alternates for visibility/debugging.
+      ALT_IP1=$(curl -s --max-time 10 https://api.ipify.org | tr -d '[:space:]')
+      ALT_IP2=$(curl -s --max-time 10 https://checkip.amazonaws.com | tr -d '[:space:]')
+      echo "Alternative IP 1: $ALT_IP1"
+      echo "Alternative IP 2: $ALT_IP2"
+      echo "##vso[task.setvariable variable=admin_ip_fw_alt1]$ALT_IP1"
+      echo "##vso[task.setvariable variable=admin_ip_fw_alt2]$ALT_IP2"
+
+- task: AzureCLI@2
+  displayName: '02_az_set_ip_to_seeding_keyvault_FW_whitelist'
+  condition: and(succeeded(), ne(variables['disable_whitelisting_for_build_agents'], 'true'))
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnectionSeeding }}
+    scriptType: bash
     scriptLocation: 'inlineScript'
     inlineScript: |
-     az account set --subscription "$(admin_bicep_input_keyvault_subscription)"
-     az keyvault network-rule add --resource-group "$(admin_bicep_kv_fw_rg)" --name "$(admin_bicep_kv_fw)" --ip-address "$(admin_ip_fw)"
+     set -euo pipefail
+     vault_subscription="$(admin_bicep_input_keyvault_subscription)"
+     vault_resource_group="$(admin_bicep_kv_fw_rg)"
+     vault_name="$(admin_bicep_kv_fw)"
+     ip_to_add="$(admin_ip_fw)"
+
+     is_valid_ipv4() {
+       local ip="$1" octet
+       local -a octets
+       IFS='.' read -r -a octets <<< "$ip"
+       [ "${#octets[@]}" -eq 4 ] || return 1
+       for octet in "${octets[@]}"; do
+         [[ "$octet" =~ ^[0-9]{1,3}$ ]] || return 1
+         ((10#$octet <= 255)) || return 1
+       done
+     }
+
+     print_ado_warning() {
+       local operation="$1"
+       local output="$2"
+       if [ -z "$output" ]; then
+         echo "##[warning]$operation failed without an error message."
+         return
+       fi
+       while IFS= read -r line; do
+         [ -n "$line" ] && echo "##[warning]$operation: $line"
+       done <<< "$output"
+     }
+
+     for value_name in vault_subscription vault_resource_group vault_name ip_to_add; do
+       value="${!value_name}"
+       if [ -z "$value" ] || [[ "$value" == '$('* ]]; then
+         echo "##[error]Required value '$value_name' is empty or unresolved."
+         exit 1
+       fi
+     done
+     if ! is_valid_ipv4 "$ip_to_add"; then
+       echo "##[error]admin_ip_fw '$ip_to_add' is not a valid IPv4 address."
+       exit 1
+     fi
+
+     echo "##vso[task.setvariable variable=seeding_kv_ip_rule_added]false"
+
+     public_network_access=$(az keyvault show \
+       --subscription "$vault_subscription" \
+       --name "$vault_name" \
+       --resource-group "$vault_resource_group" \
+       --query 'properties.publicNetworkAccess' \
+       --output tsv \
+       --only-show-errors | tr -d '\r')
+     if [ "$public_network_access" = "Disabled" ]; then
+       echo "##[warning]Seeding Key Vault public network access is Disabled. Attempting to enable it temporarily before adding the build-agent IP rule. Azure Policy might reject this update."
+     fi
+
+     existing_ip_rules=$(az keyvault show \
+       --subscription "$vault_subscription" \
+       --name "$vault_name" \
+       --resource-group "$vault_resource_group" \
+       --query 'properties.networkAcls.ipRules[].value' \
+       --output tsv \
+       --only-show-errors | tr -d '\r')
+     existing_rule=""
+     for rule in $existing_ip_rules; do
+       if [ "$rule" = "$ip_to_add" ] || [ "$rule" = "$ip_to_add/32" ]; then
+         existing_rule="$rule"
+         break
+       fi
+     done
+
+     update_error=""
+     if ! update_error=$(az keyvault update \
+       --subscription "$vault_subscription" \
+       --name "$vault_name" \
+       --resource-group "$vault_resource_group" \
+       --public-network-access Enabled \
+       --default-action Deny \
+       --output none \
+       --only-show-errors 2>&1); then
+       print_ado_warning "az keyvault update" "$update_error"
+       echo "##[warning]Could not enable Key Vault public network access. Azure Policy or permissions may have rejected the update. Continuing with the IP-rule attempt and verification for diagnostics."
+     fi
+
+     add_error=""
+     if [ -n "$existing_rule" ]; then
+       echo "IP rule '$existing_rule' already exists; it will be preserved during cleanup."
+     else
+       if ! add_error=$(az keyvault network-rule add \
+         --subscription "$vault_subscription" \
+         --resource-group "$vault_resource_group" \
+         --name "$vault_name" \
+         --ip-address "$ip_to_add" \
+         --output none \
+         --only-show-errors 2>&1); then
+         print_ado_warning "az keyvault network-rule add" "$add_error"
+         echo "##[warning]Could not add Key Vault IP rule '$ip_to_add'. Azure Policy or permissions may have rejected the update. Continuing with verification for diagnostics."
+       else
+         echo "##vso[task.setvariable variable=seeding_kv_ip_rule_added]true"
+       fi
+     fi
+
+     for attempt in 1 2 3 4 5 6; do
+       public_network_access=$(az keyvault show \
+         --subscription "$vault_subscription" \
+         --name "$vault_name" \
+         --resource-group "$vault_resource_group" \
+         --query 'properties.publicNetworkAccess' \
+         --output tsv \
+         --only-show-errors | tr -d '\r')
+       default_action=$(az keyvault show \
+         --subscription "$vault_subscription" \
+         --name "$vault_name" \
+         --resource-group "$vault_resource_group" \
+         --query 'properties.networkAcls.defaultAction' \
+         --output tsv \
+         --only-show-errors | tr -d '\r')
+       current_ip_rules=$(az keyvault show \
+         --subscription "$vault_subscription" \
+         --name "$vault_name" \
+         --resource-group "$vault_resource_group" \
+         --query 'properties.networkAcls.ipRules[].value' \
+         --output tsv \
+         --only-show-errors | tr -d '\r')
+       matching_rule=""
+       for rule in $current_ip_rules; do
+         if [ "$rule" = "$ip_to_add" ] || [ "$rule" = "$ip_to_add/32" ]; then
+           matching_rule="$rule"
+           break
+         fi
+       done
+       echo "Key Vault network check $attempt/6: publicNetworkAccess=$public_network_access, defaultAction=$default_action, matchingIpRule=${matching_rule:-none}"
+       if [ "$public_network_access" = "Enabled" ] && [ "$default_action" = "Deny" ] && [ -n "$matching_rule" ]; then
+         exit 0
+       fi
+       sleep 10
+     done
+
+     echo "##[warning]Key Vault public network configuration did not persist: publicNetworkAccess must be Enabled, defaultAction must be Deny, and IP $ip_to_add must be present. Continuing so subsequent tasks can expose the customer-specific access behavior."
+     if [ -n "$update_error" ] || [ -n "$add_error" ]; then
+       echo "##[warning]Captured Azure CLI error details:"
+       if [ -n "$update_error" ]; then
+         print_ado_warning "az keyvault update" "$update_error"
+       fi
+       if [ -n "$add_error" ]; then
+         print_ado_warning "az keyvault network-rule add" "$add_error"
+       fi
+     else
+       echo "##[warning]Azure CLI returned no command error. The requested update completed, but the observed Key Vault state remained publicNetworkAccess=$public_network_access, defaultAction=$default_action, matchingIpRule=${matching_rule:-none}. Azure Policy may have modified or reverted the setting."
+     fi
+     exit 0
+- task: AzureCLI@2
+  displayName: '02b_az_prepare_seeding_keyvault_private_dns'
+  condition: and(succeeded(), eq(variables['disable_whitelisting_for_build_agents'], 'true'))
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnectionSeeding }}
+    scriptType: pscore
+    scriptLocation: inlineScript
+    inlineScript: |
+     $vnetResourceGroup = "$(vnetResourceGroup_resolved)"
+     if ([string]::IsNullOrWhiteSpace($vnetResourceGroup) -or $vnetResourceGroup -match '^\$\(.+\)$') {
+       $vnetResourceGroup = "$(admin_aifactoryPrefixRG)$(vnetResourceGroupBase)-$(admin_locationSuffix)-$(dev_test_prod)$(admin_aifactorySuffixRG)"
+     }
+     $vnetName = "$(vnetNameFull_resolved)"
+     if ([string]::IsNullOrWhiteSpace($vnetName) -or $vnetName -match '^\$\(.+\)$') {
+       $vnetName = "$(vnetNameBase)-$(admin_locationSuffix)-$(dev_test_prod)$(admin_commonResourceSuffix)"
+     }
+     $dnsZoneSubscription = if ("$(centralDnsZoneByPolicyInHub)" -eq 'true') {
+       "$(privDnsSubscription_param)"
+     } else {
+       "$(dev_test_prod_sub_id)"
+     }
+     $dnsZoneResourceGroup = if ("$(centralDnsZoneByPolicyInHub)" -eq 'true') {
+       "$(privDnsResourceGroup_param)"
+     } else {
+       $vnetResourceGroup
+     }
+     & "$(System.DefaultWorkingDirectory)/azure-enterprise-scale-ml/environment_setup/aifactory/bicep/scripts/prepareSeedingKeyVaultPrivateDns.ps1" `
+       -VaultSubscription "$(admin_bicep_input_keyvault_subscription)" `
+       -VaultResourceGroup "$(admin_bicep_kv_fw_rg)" `
+       -VaultName "$(admin_bicep_kv_fw)" `
+       -VnetSubscription "$(dev_test_prod_sub_id)" `
+       -VnetResourceGroup $vnetResourceGroup `
+       -VnetName $vnetName `
+       -DnsZoneSubscription $dnsZoneSubscription `
+       -DnsZoneResourceGroup $dnsZoneResourceGroup `
+       -DnsManagedByPolicy:($env:DNS_MANAGED_BY_POLICY -eq 'true')
+  env:
+    DNS_MANAGED_BY_POLICY: $(centralDnsZoneByPolicyInHub)
 - task: AzureKeyVault@2  
   displayName: '03_az_download_seeding_keyvault'
   inputs:
     azureSubscription: ${{ parameters.serviceConnectionSeeding }}
     KeyVaultName: '$(admin_bicep_kv_fw)'
-- task: AzurePowerShell@4
-  displayName: '04_pwsh_calculate_subnet_allocations'
+- task: AzureCLI@2
+  displayName: '03b_create_temp_json_files'
   inputs:
     azureSubscription: ${{ parameters.serviceConnection }}
-    ScriptPath: '$(System.DefaultWorkingDirectory)/azure-enterprise-scale-ml/environment_setup/aifactory/bicep/scripts/subnetCalc.ps1'
-    ScriptArguments: '-bicepPar1 "../../../../../aifactory/parameters/10-esml-globals-1.json" -bicepPar2 "../../../../../aifactory/parameters/10-esml-globals-2-12_13_21_22.json" -bicepPar3 "../../../../../aifactory/parameters/10-esml-globals-4-13_21_22.json" -bicepPar4 "../../../../../aifactory/parameters/21-22-esml-prj-parameters.json" -bicepPar5 "../../../../../aifactory/parameters/10-esml-globals-override.json" -filePath "../../../../../aifactory/parameters/" -spObjId "$(esml-common-bicep-sp-id)" -spSecret "$(esml-common-bicep-sp-secret)" -env "$(dev_test_prod)" -subscriptionId "$(dev_test_prod_sub_id)" -prjResourceSuffix "$(admin_prjResourceSuffix)" -commonRGNamePrefixVar "$(admin_aifactoryPrefixRG)" -aifactorySuffixRGADO "$(admin_aifactorySuffixRG)" -commonResourceSuffixADO "$(admin_commonResourceSuffix)" -locationADO "$(admin_location)" -locationSuffixADO "$(admin_locationSuffix)" -projectTypeADO "$(admin_projectType)" -useServicePrincipal'
-    pwsh: true
-    azurePowerShellVersion: 'LatestVersion' # 'LatestVersion' | 'OtherVersion' 
-    # preferredAzurePowerShellVersion: # ['4.251.1',' 5.251.1'] is downloaded.  This works on other pipeline: '4.248.1'. AllowClobber worked.
-    workingDirectory: '$(System.DefaultWorkingDirectory)/azure-enterprise-scale-ml/environment_setup/aifactory/bicep/scripts'
+    scriptType: pscore
+    scriptLocation: inlineScript
+    inlineScript: |
+      # Create temporary JSON files from YAML variables
+      $tempDir = "$(System.DefaultWorkingDirectory)/aifactory/parameters/"
+      New-Item -ItemType Directory -Force -Path $tempDir
+      
+      # temp-globals-1.json (bicepPar1)
+      $globals1 = @{
+        '$schema' = "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#"
+        contentVersion = "1.0.0.0"
+        parameters = @{
+          aifactorySuffixRG = @{ value = "$(admin_aifactorySuffixRG)" }
+          commonRGNamePrefix = @{ value = "$(admin_aifactoryPrefixRG)" }
+          locationSuffix = @{ value = "$(admin_locationSuffix)" }
+          location = @{ value = "$(admin_location)" }
+        }
+      }
+      $globals1 | ConvertTo-Json -Depth 5 | Out-File "$tempDir/temp-globals-1.json" -Encoding UTF8
+      
+      # temp-globals-2.json (bicepPar2)
+      $globals2 = @{
+        '$schema' = "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#"
+        contentVersion = "1.0.0.0"
+        parameters = @{
+          commonResourceSuffix = @{ value = "$(admin_commonResourceSuffix)" }
+          vnetNameBase = @{ value = "$(vnetNameBase)" }
+        }
+      }
+      $globals2 | ConvertTo-Json -Depth 5 | Out-File "$tempDir/temp-globals-2.json" -Encoding UTF8
+      
+      # temp-globals-3.json (bicepPar3) - Only include parameters actually used by subnetCalc_v2.ps1
+      $globals3 = @{
+        '$schema' = "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#"
+        contentVersion = "1.0.0.0"
+        parameters = @{
+          tenantId = @{ value = "$(tenantId)" }
+        }
+      }
+      $globals3 | ConvertTo-Json -Depth 5 | Out-File "$tempDir/temp-globals-3.json" -Encoding UTF8
+      
+      # temp-project.json (bicepPar4)
+      $project = @{
+        '$schema' = "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#"
+        contentVersion = "1.0.0.0"
+        parameters = @{
+          vnetResourceGroupBase = @{ value = "$(vnetResourceGroupBase)" }
+        }
+      }
+      $project | ConvertTo-Json -Depth 5 | Out-File "$tempDir/temp-project.json" -Encoding UTF8
+      
+      # temp-override.json (bicepPar5) - Use resolved variables with <network_env> already replaced
+      $override = @{
+        '$schema' = "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#"
+        contentVersion = "1.0.0.0"
+        parameters = @{
+          vnetResourceGroup_param = @{ value = "$(vnetResourceGroup_resolved)" }
+          vnetNameFull_param = @{ value = "$(vnetNameFull_resolved)" }
+        }
+      }
+      $override | ConvertTo-Json -Depth 5 | Out-File "$tempDir/temp-override.json" -Encoding UTF8
+      
+      Write-Host "Temporary JSON files created successfully"
+
+- task: PowerShell@2
+  displayName: '03c_validate_script_paths_before_execution'
+  inputs:
+    pwsh: ${{ parameters.linuxRunner }}
+    targetType: 'inline'
+    script: |
+      Write-Host "=== VALIDATING PATHS BEFORE SCRIPT EXECUTION ==="
+      
+      $workingDir = "$(System.DefaultWorkingDirectory)"
+      $scriptPath = "$workingDir/azure-enterprise-scale-ml/environment_setup/aifactory/bicep/scripts"
+      $subnetScript = "$scriptPath/subnetCalc_v2.ps1"
+      
+      Write-Host "Working Directory: $workingDir"
+      Write-Host "Expected Script Path: $scriptPath"
+      Write-Host "Expected Script File: $subnetScript"
+      
+      # Check if working directory exists and show contents
+      if (Test-Path $workingDir) {
+        Write-Host "✅ Working directory exists"
+        Write-Host "Contents of working directory:"
+        Get-ChildItem $workingDir | Format-Table Name, IsDirectory
+      } else {
+        Write-Host "❌ Working directory does not exist: $workingDir"
+        exit 1
+      }
+      
+      # Check if azure-enterprise-scale-ml exists
+      $submodulePath = "$workingDir/azure-enterprise-scale-ml"
+      if (Test-Path $submodulePath) {
+        Write-Host "✅ Submodule directory exists: $submodulePath"
+      } else {
+        Write-Host "❌ Submodule directory does not exist: $submodulePath"
+        exit 1
+      }
+      
+      # Check if script directory exists
+      if (Test-Path $scriptPath) {
+        Write-Host "✅ Script directory exists: $scriptPath"
+        Write-Host "Contents of script directory:"
+        Get-ChildItem $scriptPath | Format-Table Name
+      } else {
+        Write-Host "❌ Script directory does not exist: $scriptPath"
+        Write-Host "Available paths in environment_setup/aifactory/bicep:"
+        $bicepPath = "$workingDir/azure-enterprise-scale-ml/environment_setup/aifactory/bicep"
+        if (Test-Path $bicepPath) {
+          Get-ChildItem $bicepPath | Format-Table Name, IsDirectory
+        }
+        exit 1
+      }
+      
+      # Check if the specific script exists
+      if (Test-Path $subnetScript) {
+        Write-Host "✅ subnetCalc_v2.ps1 script exists: $subnetScript"
+      } else {
+        Write-Host "❌ subnetCalc_v2.ps1 script does not exist: $subnetScript"
+        Write-Host "Available PowerShell scripts:"
+        Get-ChildItem $scriptPath -Filter "*.ps1" | Format-Table Name
+        exit 1
+      }
+      
+      Write-Host "=== ALL PATHS VALIDATED SUCCESSFULLY ==="
+
+- ${{ if eq(parameters.linuxRunner, true) }}:
+  - task: AzureCLI@2
+    displayName: '04_pwsh_calculate_subnet_allocations'
+    inputs:
+      azureSubscription: ${{ parameters.serviceConnection }}
+      scriptType: pscore
+      scriptLocation: scriptPath
+      scriptPath: '$(System.DefaultWorkingDirectory)/azure-enterprise-scale-ml/environment_setup/aifactory/bicep/scripts/subnetCalc_v2.ps1'
+      arguments: '-filePath "$(System.DefaultWorkingDirectory)/aifactory/parameters/" -env "$(dev_test_prod)" -subscriptionId "$(dev_test_prod_sub_id)" -prjResourceSuffix "$(admin_prjResourceSuffix)" -projectNumber "$(project_number_000)" -commonRGNamePrefixVar "$(admin_aifactoryPrefixRG)" -aifactorySuffixRGADO "$(admin_aifactorySuffixRG)" -commonResourceSuffixADO "$(admin_commonResourceSuffix)" -locationADO "$(admin_location)" -locationSuffixADO "$(admin_locationSuffix)" -projectTypeADO "$(admin_projectType)" -aifactorySuffixRG "$(admin_aifactorySuffixRG)" -commonRGNamePrefix "$(admin_aifactoryPrefixRG)" -locationSuffix "$(admin_locationSuffix)" -location "$(admin_location)" -commonResourceSuffix "$(admin_commonResourceSuffix)" -vnetNameBase "$(vnetNameBase)" -tenantId "$(tenantId)" -vnetResourceGroupBase "$(vnetResourceGroupBase)" -vnetResourceGroup_param "$(vnetResourceGroup_resolved)" -vnetNameFull_param "$(vnetNameFull_resolved)" -enableLogicApps "$(enableLogicApps)" -logicAppType "$(logicAppType)" -byoASEv3 "$(byoASEv3)" -enablePublicAccessWithPerimeter "$(enablePublicAccessWithPerimeter)"'
+      workingDirectory: '$(System.DefaultWorkingDirectory)/azure-enterprise-scale-ml/environment_setup/aifactory/bicep/scripts'
+    env:
+      AIFACTORY_USE_AZURE_CLI: 'true'
+- ${{ if eq(parameters.linuxRunner, false) }}:
+  - task: AzurePowerShell@5
+    displayName: '04_pwsh_calculate_subnet_allocations'
+    inputs:
+      azureSubscription: ${{ parameters.serviceConnection }}
+      ScriptType: FilePath
+      ScriptPath: '$(System.DefaultWorkingDirectory)/azure-enterprise-scale-ml/environment_setup/aifactory/bicep/scripts/subnetCalc_v2.ps1'
+      ScriptArguments: '-filePath "../../../../../aifactory/parameters/" -env "$(dev_test_prod)" -subscriptionId "$(dev_test_prod_sub_id)" -prjResourceSuffix "$(admin_prjResourceSuffix)" -projectNumber "$(project_number_000)" -commonRGNamePrefixVar "$(admin_aifactoryPrefixRG)" -aifactorySuffixRGADO "$(admin_aifactorySuffixRG)" -commonResourceSuffixADO "$(admin_commonResourceSuffix)" -locationADO "$(admin_location)" -locationSuffixADO "$(admin_locationSuffix)" -projectTypeADO "$(admin_projectType)" -aifactorySuffixRG "$(admin_aifactorySuffixRG)" -commonRGNamePrefix "$(admin_aifactoryPrefixRG)" -locationSuffix "$(admin_locationSuffix)" -location "$(admin_location)" -commonResourceSuffix "$(admin_commonResourceSuffix)" -vnetNameBase "$(vnetNameBase)" -tenantId "$(tenantId)" -vnetResourceGroupBase "$(vnetResourceGroupBase)" -vnetResourceGroup_param "$(vnetResourceGroup_resolved)" -vnetNameFull_param "$(vnetNameFull_resolved)" -enableLogicApps "$(enableLogicApps)" -logicAppType "$(logicAppType)" -byoASEv3 "$(byoASEv3)" -enablePublicAccessWithPerimeter "$(enablePublicAccessWithPerimeter)"'
+      azurePowerShellVersion: LatestVersion
+      pwsh: true
+      workingDirectory: '$(System.DefaultWorkingDirectory)/azure-enterprise-scale-ml/environment_setup/aifactory/bicep/scripts'
 - task: AzureCLI@2
-  displayName: '05_az_bicep_deploy_subnets_and_NSGs'
+  displayName: '04b_check_subnet_exists_for_project'
   inputs:
     azureSubscription: ${{ parameters.serviceConnection }}
     scriptType: bash
-    scriptLocation: 'inlineScript'
+    scriptLocation: inlineScript
     inlineScript: |
-    
-     # value='${{ convertToJson(parameters.aifactory_tags) }}'
-     # echo '##vso[task.setvariable parameters.aifactory_tags.value]'$value
+      #!/bin/bash
 
-     echo "Deploying subnets and NSG to subscription: $(dev_test_prod_sub_id)"
-     az account set --subscription "$(dev_test_prod_sub_id)"
-     az deployment group create \
-     --name "esml-p$(project_number_000)-$(dev_test_prod)-$(admin_locationSuffix)$(admin_aifactorySuffixRG)SubnetDeplProj" \
-     --subscription "$(dev_test_prod_sub_id)" \
-     --resource-group "$(cat "..\..\..\..\aifactory\parameters\subnetParameters.json" | grep vnetResourceGroup -A1 | tail -n1 | cut -d: -f2 | tr -d " \"")" \
-     --template-file "esml-genai-1\31-network.bicep" \
-     --parameters @"..\..\..\..\aifactory\parameters\subnetParameters.json" \
-     --parameters @"..\..\..\..\aifactory\parameters\10-esml-globals-1.json" \
-     --parameters @"..\..\..\..\aifactory\parameters\10-esml-globals-override.json" \
-     --parameters env="$(dev_test_prod)" \
-     --parameters projectNumber="$(project_number_000)" \
-     --parameters location="$(admin_location)" \
-     --parameters locationSuffix="$(admin_locationSuffix)"
-     
-    workingDirectory: '$(System.DefaultWorkingDirectory)/azure-enterprise-scale-ml/environment_setup/aifactory/bicep'
+      az account set --subscription "$(dev_test_prod_sub_id)"
 
-- task: AzureCLI@1
-  displayName: '08_az_remove_ip_from_seeding_keyvault_FW_whitelist'
+      # Input parameters
+      projectNumber="$(project_number_000)"
+      
+      # Get vnet information from resolved variables (with <network_env> already replaced), with fallback to naming convention
+      VNET_NAME="$(vnetNameFull_resolved)"
+      VNET_RG="$(vnetResourceGroup_resolved)"
+      
+      # Fallback to original params if resolved variables are empty
+      if [ -z "$VNET_NAME" ] || [[ "$VNET_NAME" == \$\(vnetNameFull_resolved\)* ]]; then
+        VNET_NAME="$(vnetNameFull_param)"
+      fi
+      
+      if [ -z "$VNET_RG" ] || [[ "$VNET_RG" == \$\(vnetResourceGroup_resolved\)* ]]; then
+        VNET_RG="$(vnetResourceGroup_param)"
+      fi
+      
+      echo "Using resolved VNET_NAME: $VNET_NAME"
+      echo "Using resolved VNET_RG: $VNET_RG"
+
+      # If VNET variables are not set (empty or unexpanded), use naming convention
+      if [ -z "$VNET_NAME" ] || [[ "$VNET_NAME" == \$\(vnetNameFull_param\)* ]]; then
+        VNET_NAME="$(vnetNameBase)-$(admin_locationSuffix)-$(dev_test_prod)$(admin_commonResourceSuffix)"
+        echo "VNET name not set, using naming convention: $VNET_NAME"
+      else
+        echo "Using provided VNET name: $VNET_NAME"
+      fi
+      
+      if [ -z "$VNET_RG" ] || [[ "$VNET_RG" == \$\(vnetResourceGroup_param\)* ]]; then
+        # Use the common resource group naming convention
+        VNET_RG="$(admin_aifactoryPrefixRG)$(vnetResourceGroupBase)-$(admin_locationSuffix)-$(dev_test_prod)$(admin_aifactorySuffixRG)"
+        echo "VNET resource group not set, using naming convention: $VNET_RG"
+      else
+        echo "Using provided VNET resource group: $VNET_RG"
+      fi
+      
+      echo "Checking subnet existence in VNET: $VNET_NAME"
+      echo "VNET Resource Group: $VNET_RG"
+      echo "Project Number: $projectNumber"
+      
+      # A failed or wrong-scope read is not evidence that a subnet is absent.
+      pwsh -NoProfile -File "$(System.DefaultWorkingDirectory)/azure-enterprise-scale-ml/environment_setup/aifactory/bicep/scripts/getProjectSubnetState.ps1" \
+        -subscriptionId "$(dev_test_prod_sub_id)" -vnetResourceGroup "$VNET_RG" -vnetName "$VNET_NAME" -projectNumber "$projectNumber" \
+        -enableLogicApps "$(enableLogicApps)" -logicAppType "$(logicAppType)" -byoASEv3 "$(byoASEv3)" \
+        -enablePublicAccessWithPerimeter "$(enablePublicAccessWithPerimeter)" || exit $?
+      echo "##vso[task.setvariable variable=vnetResourceGroup_resolved]$VNET_RG"
+      echo "##vso[task.setvariable variable=vnetNameFull_resolved]$VNET_NAME"
+      
+      echo "Subnet existence check completed."
+      echo "vnetResourceGroup: $(admin_aifactoryPrefixRG)$(vnetResourceGroupBase)-$(admin_locationSuffix)-$(dev_test_prod)$(admin_aifactorySuffixRG)"
+      echo "vnetResourceGroup_param: $(vnetResourceGroup_param)"
+      echo "vnetNameBase: $(vnetNameBase)"
+
+- task: AzureResourceManagerTemplateDeployment@3
+  displayName: '05_arm_deploy_subnets_and_NSGs'
   inputs:
-    azureSubscription: ${{ parameters.serviceConnection }}
+    deploymentScope: 'Resource Group'
+    azureResourceManagerConnection: ${{ parameters.serviceConnection }}
+    subscriptionId: '$(dev_test_prod_sub_id)'
+    action: 'Create Or Update Resource Group'
+    resourceGroupName: '$(vnetResourceGroup_resolved)'
+    location: '$(admin_location)'
+    templateLocation: 'Linked artifact'
+    csmFile: '$(Build.SourcesDirectory)/azure-enterprise-scale-ml/environment_setup/aifactory/bicep/esml-genai-1/31-network.bicep'
+    csmParametersFile: '$(Build.SourcesDirectory)/aifactory/parameters/subnetParameters.json'
+    overrideParameters: >
+      -env "$(dev_test_prod)"
+      -projectNumber "$(project_number_000)"
+      -location "$(admin_location)"
+      -locationSuffix "$(admin_locationSuffix)"
+      -vnetNameBase "$(vnetNameBase)"
+      -commonResourceSuffix "$(admin_commonResourceSuffix)"
+      -tags $(tags)
+      -aifactorySuffixRG "$(admin_aifactorySuffixRG)"
+      -commonRGNamePrefix "$(admin_aifactoryPrefixRG)"
+      -vnetResourceGroup "$(vnetResourceGroup_resolved)"
+      -vnetResourceGroup_param "$(vnetResourceGroup_resolved)"
+      -vnetNameFull_param "$(vnetNameFull_resolved)"
+      -commonResourceGroup_param "$(commonResourceGroup_param)"
+      -datalakeName_param "$(datalakeName_param)"
+      -kvNameFromCOMMON_param "$(kvNameFromCOMMON_param)"
+      -useCommonACR "$(useCommonACR_override)"
+      -subnetCommon "$(subnetCommon)"
+      -subnetCommonScoring "$(subnetCommonScoring)"
+      -subnetCommonPowerbiGw "$(subnetCommonPowerbiGw)"
+      -subnetProjGenAI "$(subnetProjGenAI)"
+      -subnetProjAKS "$(subnetProjAKS)"
+      -subnetProjAKS2 "$(subnetProjAKS2)"
+      -subnetProjACA "$(subnetProjACA)"
+      -subnetProjACA2 "$(subnetProjACA2)"
+      -subnetProjWebapp "$(subnetProjWebapp)"
+      -subnetProjLogicapp "$(subnetProjLogicapp)"
+      -enableLogicApps "$(enableLogicApps)"
+      -logicAppType "$(logicAppType)"
+      -enablePublicAccessWithPerimeter "$(enablePublicAccessWithPerimeter)"
+      -subnetProjDatabricksPublic "$(subnetProjDatabricksPublic)"
+      -subnetProjDatabricksPrivate "$(subnetProjDatabricksPrivate)"
+      -byoASEv3 "$(byoASEv3)"
+      -byoAseFullResourceId "$(byoAseFullResourceId)"
+      -byoAseAppServicePlanResourceId "$(byoAseAppServicePlanResourceId)"
+      -centralDnsZoneByPolicyInHub "$(centralDnsZoneByPolicyInHub)"
+      -sntGenaiExists "$(sntGenaiExists)"
+      -sntAcaExists "$(sntAcaExists)"
+      -sntAca002Exists "$(sntAca002Exists)"
+      -sntAksExists "$(sntAksExists)"
+      -sntAks002Exists "$(sntAks002Exists)"
+      -sntWebappExists "$(sntWebappExists)"
+      -sntLogicappExists "$(sntLogicappExists)"
+      -sntDatabricksPrivExists "$(sntDatabricksPrivExists)"
+      -sntDatabricksPubExists "$(sntDatabricksPubExists)"
+      -aksOutboundType "$(aksOutboundType)"
+      -azureFirewallPrivateIp "$(aksAzureFirewallPrivateIp)"
+    deploymentMode: 'Incremental'
+    deploymentName: 'esml-p$(project_number_000)-$(dev_test_prod)-$(admin_locationSuffix)$(admin_aifactorySuffixRG)SubnetDeplProj'
+
+- task: AzureCLI@2
+  displayName: '08_az_remove_ip_from_seeding_keyvault_FW_whitelist'
+  condition: and(always(), ne(variables['disable_whitelisting_for_build_agents'], 'true'), eq(variables['seeding_kv_ip_rule_added'], 'true'))
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnectionSeeding }}
+    scriptType: 'bash'
     scriptLocation: 'inlineScript'
     inlineScript: | 
-     az account set --subscription "$(admin_bicep_input_keyvault_subscription)"
-     az keyvault network-rule remove --resource-group "$(admin_bicep_kv_fw_rg)" --name "$(admin_bicep_kv_fw)" --ip-address "$(admin_ip_fw)"
-  condition: always()
+     set -uo pipefail
+     vault_subscription="$(admin_bicep_input_keyvault_subscription)"
+     vault_resource_group="$(admin_bicep_kv_fw_rg)"
+     vault_name="$(admin_bicep_kv_fw)"
+     ip_to_remove="$(admin_ip_fw)"
+
+     if [ -z "$ip_to_remove" ] || [[ "$ip_to_remove" == '$('* ]]; then
+       echo "##[warning]Skipping Key Vault firewall cleanup because admin_ip_fw is empty or unresolved."
+       exit 0
+     fi
+
+     current_ip_rules=$(az keyvault show \
+       --subscription "$vault_subscription" \
+       --name "$vault_name" \
+       --resource-group "$vault_resource_group" \
+       --query 'properties.networkAcls.ipRules[].value' \
+       --output tsv \
+       --only-show-errors 2>/dev/null | tr -d '\r') || {
+         echo "##[warning]Could not read Key Vault firewall rules during cleanup."
+         exit 0
+       }
+     matching_rule=""
+     for rule in $current_ip_rules; do
+       if [ "$rule" = "$ip_to_remove" ] || [ "$rule" = "$ip_to_remove/32" ]; then
+         matching_rule="$rule"
+         break
+       fi
+     done
+     if [ -z "$matching_rule" ]; then
+       echo "Build-agent IP rule is already absent; cleanup is complete."
+       exit 0
+     fi
+
+     az keyvault network-rule remove \
+       --subscription "$vault_subscription" \
+       --resource-group "$vault_resource_group" \
+       --name "$vault_name" \
+       --ip-address "$matching_rule" \
+       --output none \
+       --only-show-errors || echo "##[warning]Failed to remove Key Vault IP rule '$matching_rule'."
+
+- template: ../../esml-infra-common/jobs/region-report-steps.yaml
