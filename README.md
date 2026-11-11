@@ -6,7 +6,8 @@ Keep your configuration and orchestration entry points here. Reuse PURPLE's infr
 
 **v1.25 and newer only:** consumer configuration lives in `azurefactory/register.json`. BLUE does not initialize or run the legacy `aifactory/` layout. Both folders are not needed.
 
-[Full setup & usage guide](https://github.com/jostrm/azure-enterprise-scale-ml/blob/release/v1.25/documentation/v2/20-29/24-end-2-end-setup.md)
+[Full setup & usage guide](https://github.com/jostrm/azure-enterprise-scale-ml/blob/release/v1.25/documentation/v2/20-29/24-end-2-end-setup.md) |
+[Full variable documentation](https://jostrm.github.io/azure-enterprise-scale-ml/)
 
 [![Private AI Factory landing zones and isolated project teams](https://raw.githubusercontent.com/jostrm/azure-enterprise-scale-ml/main/documentation/v2/10-19/images/14-eslz-full-1.png)](https://github.com/jostrm/azure-enterprise-scale-ml/blob/89eca66185366a702b026cec8c938570548c649c/documentation/v2/20-29/24-end-2-end-setup.md)
 
@@ -37,6 +38,7 @@ See [configuration, compatibility and safe upgrades](documentation/bootstrapping
 ## Available through PURPLE
 
 [Full setup & usage guide](https://github.com/jostrm/azure-enterprise-scale-ml/blob/release/v1.25/documentation/v2/20-29/24-end-2-end-setup.md) |
+[Full variable documentation](https://jostrm.github.io/azure-enterprise-scale-ml/) |
 [Agent Factory](https://github.com/jostrm/azure-enterprise-scale-ml/blob/89eca66185366a702b026cec8c938570548c649c/usecase_code/40-agent-factory/readme.md) |
 [ML Factory](https://github.com/jostrm/azure-enterprise-scale-ml/blob/89eca66185366a702b026cec8c938570548c649c/usecase_code/50-ml-model-factory/readme.md)
 
