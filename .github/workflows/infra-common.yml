@@ -36,15 +36,15 @@ jobs:
       runs-on: ubuntu-latest
       steps:
       - name: Azure Login
-        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2.3.1
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
       - name: GIT
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: true
       - name: 1_az_bicep_common_rg
-        uses: azure/cli@9f7ce6f37c31b777ec6c6b6d1dfe7db79f497956 # v2.2.0
+        uses: azure/cli@9eb25b8360668fb0ecbafa808d40e2197b2f5f52 # v3.0.0
         with:
           inlineScript: |
             az deployment sub create \
@@ -64,7 +64,7 @@ jobs:
             --parameters technicalAdminsEmail="${{ env.technical_admins_email }}"
           azcliversion: latest
       - name: 02_az_bicep_private_networking
-        uses: azure/cli@9f7ce6f37c31b777ec6c6b6d1dfe7db79f497956 # v2.2.0
+        uses: azure/cli@9eb25b8360668fb0ecbafa808d40e2197b2f5f52 # v3.0.0
         with:
           inlineScript: |
             az deployment sub create \
@@ -87,7 +87,7 @@ jobs:
             --parameters IPwhiteList="${{ env.technical_admins_bastion_IP_whitelist }}"
           azcliversion: latest
       - name: 03_az_bicep_deploy_resources
-        uses: azure/cli@9f7ce6f37c31b777ec6c6b6d1dfe7db79f497956 # v2.2.0
+        uses: azure/cli@9eb25b8360668fb0ecbafa808d40e2197b2f5f52 # v3.0.0
         with:
           inlineScript: |
             az deployment sub create \
