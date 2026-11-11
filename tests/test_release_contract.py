@@ -19,6 +19,28 @@ IMAGE_ROOT = (
 
 
 class ReleaseContractTests(unittest.TestCase):
+    def test_registered_only_onboarding_contract(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        notes = (ROOT / "bootstrap/release-notes.txt").read_text(encoding="utf-8")
+        docs = (ROOT / "documentation/bootstrapping.md").read_text(encoding="utf-8")
+        self.assertIn("v1.25 and newer only", readme)
+        self.assertIn("azurefactory/register.json", readme)
+        self.assertIn("01-start-v125-and-above.sh", docs)
+        self.assertIn("registered_setup.py", docs)
+        self.assertIn("No legacy", notes)
+        self.assertNotIn("supported legacy", docs)
+        self.assertNotIn("supported layout is the upstream **legacy", docs)
+        self.assertNotIn("bash 04ab-setup-infra-aifactory.sh --repo", docs)
+        self.assertFalse((ROOT / "aifactory").exists())
+        self.assertEqual(list((ROOT / ".github/workflows").glob("infra-*.yml")), [])
+
+    def test_ci_long_paths_configured_before_recursive_checkout(self):
+        text = (ROOT / ".github/workflows/bootstrap-consumer-tests.yml").read_text(encoding="utf-8")
+        for value in ("GIT_CONFIG_COUNT: '1'", "GIT_CONFIG_KEY_0: core.longpaths",
+                      "GIT_CONFIG_VALUE_0: 'true'"):
+            self.assertIn(value, text)
+            self.assertLess(text.index(value), text.index("uses: actions/checkout@"))
+
     def test_pinned_upstream_document_links_exist_in_selected_release(self):
         prefix = f"https://github.com/jostrm/azure-enterprise-scale-ml/blob/{PIN}/"
         for relative in ("README.md", "documentation/bootstrapping.md"):

@@ -16,12 +16,17 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from bootstrap import consumer
 
+EMPTY = {"schema_version": 2, "generation": "new", "factories": [],
+         "configurations": {}, "bindings": {}}
+
 
 class ConsumerTests(unittest.TestCase):
     def setUp(self):
         self.root = ROOT / ".consumer-test-work" / uuid4().hex
         self.root.mkdir(parents=True)
         self.source = ROOT / consumer.SUBMODULE
+        subprocess.run(["git", "-C", str(self.root), "init", "-b", "consumer-branch"],
+                       capture_output=True, check=True)
 
     def tearDown(self):
         def writable(func, path, _):
@@ -31,301 +36,303 @@ class ConsumerTests(unittest.TestCase):
         if not any(self.root.parent.iterdir()):
             self.root.parent.rmdir()
 
-    def install(self, dry_run=False):
+    def install(self, **kwargs):
         with contextlib.redirect_stdout(io.StringIO()):
-            return consumer.refresh(self.root, self.source, dry_run=dry_run)
+            return consumer.refresh(self.root, self.source, **kwargs)
 
     def snapshot(self):
-        return {str(p.relative_to(self.root)): hashlib.sha256(p.read_bytes()).hexdigest()
-                for p in self.root.rglob("*") if p.is_file()}
+        return {str(p.relative_to(self.root)):
+                (hashlib.sha256(p.read_bytes()).hexdigest(), p.stat().st_mtime_ns)
+                if p.is_file() else None for p in self.root.rglob("*")}
 
     def test_dry_run_creates_nothing(self):
+        before = self.snapshot()
         self.install(dry_run=True)
-        self.assertEqual(list(self.root.iterdir()), [])
+        self.assertEqual(before, self.snapshot())
+        self.assertFalse((self.root / "azurefactory").exists())
 
-    def test_initialize_and_rerun_preserve_active_configuration_and_sync_script(self):
+    def test_initialize_creates_empty_register_not_legacy_bundle(self):
         self.install()
+        self.assertEqual(json.loads((self.root / "azurefactory/register.json").read_text()), EMPTY)
+        self.assertFalse((self.root / "aifactory").exists())
+        self.assertEqual(
+            {p.name for p in (self.root / ".github/workflows").iterdir()}, {"factory-lifecycle.yml"})
+        self.assertEqual(
+            {p.name for p in self.root.glob("*.sh")},
+            {"azurefactory.sh", "AIFactory-lifecycle.sh", "ADO-azurefactory.sh", "GHA-azurefactory.sh"})
+        self.assertFalse((self.root / "aifactory-templates").exists())
+
+    def test_rerun_preserves_registered_configuration_and_blue_scripts(self):
+        self.install()
+        document = dict(
+            EMPTY, generation="customer-owned",
+            factories=[{"id": "customer", "key": "customer", "kind": "genai",
+                        "scale_sets": [], "projects": []}],
+            configurations={"customer": {"factory": {"version": "1.26", "custom": "kept"},
+                                          "scale_sets": {}, "projects": {}, "variables": {}}},
+            bindings={"customer": {"ado": {"project": "private"}}},
+            ownership_evidence={"note": "customer-selected-version"})
         protected = {
-            ".env": "GITHUB_TOKEN=do-not-print\n",
-            ".gitignore": "# local\n",
-            "02b-GH-create-or-update-github-variables.sh": "local sync\n",
-            "aifactory/variables.json": '{"dev":{"enableFactoryChatAgent":"true","custom":"kept"}}\n',
-            "aifactory/esml-infra/azure-devops/bicep/yaml/variables/variables.yaml":
-                'variables:\n  custom: "kept"\n',
+            ".env": b"GITHUB_TOKEN=do-not-print\r\n",
+            "02b-GH-create-or-update-github-variables.sh": b"local sync\n",
+            "azurefactory/register.json": (json.dumps(document) + "\r\n").encode(),
+            "azurefactory/customer-config.json": b'{"version":"do-not-change"}\r\n',
         }
         for name, value in protected.items():
             path = self.root / name
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(value, encoding="utf-8")
+            path.write_bytes(value)
         before = self.snapshot()
         self.install()
         self.assertEqual(before, self.snapshot())
-        for name, value in protected.items():
-            self.assertEqual((self.root / name).read_text(encoding="utf-8"), value)
 
-    def test_current_workflows_and_complete_helpers_available(self):
+    def test_existing_gitignore_bytes_preserved_with_only_api_metadata_append(self):
+        original = b"# customer\r\n.env\r\n.aifactory-backups/\r\n"
+        (self.root / ".gitignore").write_bytes(original)
         self.install()
-        for name in consumer.WORKFLOWS:
-            target = self.root / ".github" / "workflows" / name
-            origin = self.source / consumer.SETTINGS / "github-actions" / name
-            self.assertEqual(target.read_bytes(), consumer.render_workflow(origin))
-        for name in ("lib/bootstrap_no_delete.py", "lib/initialize_azurefactory.py",
-                     "lib/registered_personas.py", "ui/terminal.sh",
-                     "templates/azurefactory/register.json"):
-            self.assertTrue((self.root / name).is_file(), name)
-        for old in ("infra-project-esml.yml", "infra-project-genai.yml",
-                    "infra-add-core-member.yml", "infra-add-project-member.yml"):
-            self.assertFalse((self.root / ".github/workflows" / old).exists())
-        self.assertFalse((self.root / "azurefactory").exists())
-
-    def test_new_config_metadata_and_optional_services(self):
+        data = (self.root / ".gitignore").read_bytes()
+        self.assertTrue(data.startswith(original))
+        self.assertIn(b".azurefactory/\r\n", data)
         self.install()
-        config = json.loads((self.root / "aifactory/variables.json").read_text())
-        original = json.loads((self.source / "environment_setup/aifactory/variables.json").read_text())
-        for section in config.values():
-            if not isinstance(section, dict):
-                continue
-            if "aifactory_branch_chosen" in section:
-                self.assertEqual(section["aifactory_branch_chosen"], "release/v1.25")
-                self.assertEqual(section["aifactory_version_minor"], "25")
-        for flag in ("enableFactoryChatAgent", "enableAIFactoryAgentLiveVoice",
-                     "enableAIGatewaySKU", "ENABLE_APIM", "ENABLE_KONG", "enableAppInsightsDashboard"):
-            self.assertEqual(config["dev"][flag], original["dev"][flag], flag)
-            self.assertIn(config["dev"][flag], (False, "false"), flag)
+        self.assertEqual(data, (self.root / ".gitignore").read_bytes())
 
-    def test_registered_layout_rejected_without_writes(self):
-        (self.root / "azurefactory").mkdir()
-        (self.root / "azurefactory/register.json").write_text("{}")
-        before = self.snapshot()
-        with self.assertRaisesRegex(ValueError, "registered|azurefactory"):
-            self.install()
-        self.assertEqual(before, self.snapshot())
-
-    def test_missing_source_fails_before_writes(self):
-        with self.assertRaises((ValueError, FileNotFoundError)):
-            consumer.refresh(self.root, self.root / "missing")
-        self.assertEqual(list(self.root.iterdir()), [])
-
-    def test_upstream_public_entry_points_and_provider_templates_exist(self):
-        for name, relative in consumer.ENTRY_POINTS.items():
-            self.assertTrue((self.source / relative).exists(), name)
+    def test_all_pinned_registered_helpers_are_installed(self):
+        plan = consumer.build_plan(self.root, self.source)
         self.install()
+        for destination, origin in plan.items():
+            self.assertTrue(destination.is_file(), str(destination))
+            if destination.name != ".gitignore":
+                self.assertEqual(destination.read_bytes(), origin.read_bytes())
         for relative in (
-            "esml-infra-common/infra-ai-gateway.yaml",
-            "esml-infra-project/infra-project-genai.yaml",
-            "esml-infra-project/infra-project-dashboards.yaml",
-            "esml-infra-project/infra-project-healthmodel.yaml",
-            "esml-infra-project/infra-project-azure-mcp.yaml",
-            "aifactory-governance/gov-cross-charging.yaml",
-            "variables/persona-access-steps.yaml",
-            "variables/logic-app-network-steps.yaml",
+            "lib/registered_personas.py", "lib/factory_lifecycle.py",
+            "lib/factory_enrollment.py", "lib/runner_bootstrap.py",
+            "lib/provider_repository_state.py", "ui/terminal.sh",
+            "templates/azurefactory/register.json", ".azurefactory-tools/azurefactory/cli.py",
+            ".azurefactory-tools/azurefactory/_vendor/factory_enrollment.py",
+            ".azurefactory-tools/azurefactory/_vendor/provider_repository_state.py",
+            ".azurefactory-tools/persona-engine/personas/pipeline.py",
+            ".azurefactory-tools/persona-engine/esml-util/project_lake_access.py",
         ):
-            self.assertTrue((self.root / consumer.ADO / relative).is_file(), relative)
-        self.assertFalse((self.root / consumer.ADO / "esml-infra-project/infra-project-esml.yaml").exists())
+            self.assertTrue((self.root / relative).is_file(), relative)
 
-    def test_migration_archives_only_unchanged_legacy_files(self):
-        obsolete = self.root / ".github/workflows/infra-project-esml.yml"
-        obsolete.parent.mkdir(parents=True)
-        original = b"# unchanged legacy template fixture\n"
-        obsolete.write_bytes(original)
-        env = {**os.environ, "GIT_AUTHOR_NAME": "Consumer Test", "GIT_AUTHOR_EMAIL": "test@example.invalid",
-               "GIT_COMMITTER_NAME": "Consumer Test", "GIT_COMMITTER_EMAIL": "test@example.invalid"}
-        for args in (["init", "-b", "fixture"], ["add", "."], ["commit", "-m", "Legacy fixture"]):
-            subprocess.run(["git", "-C", str(self.root), *args], env=env, capture_output=True, check=True)
-        baseline = consumer.git(self.root, "rev-parse", "HEAD").decode().strip()
-        with mock.patch.object(consumer, "LEGACY_BASELINE", baseline):
-            self.install(dry_run=True)
-            self.assertTrue(obsolete.exists())
-            self.install()
-            self.assertFalse(obsolete.exists())
-            backups = list((self.root / ".aifactory-backups").glob("legacy-*/.github/workflows/infra-project-esml.yml"))
-            self.assertEqual(len(backups), 1)
-            self.assertEqual(backups[0].read_bytes(), original)
-            before = self.snapshot()
-            self.install()
+    def test_provider_selection_is_additive_without_legacy_pipelines(self):
+        self.install(provider="ado")
+        self.assertTrue((self.root / "ADO-azurefactory.sh").is_file())
+        self.assertFalse((self.root / "GHA-azurefactory.sh").exists())
+        self.assertFalse((self.root / ".github").exists())
+        self.install(provider="gha", refresh_only=True)
+        self.assertTrue((self.root / "ADO-azurefactory.sh").is_file())
+        self.assertTrue((self.root / "GHA-azurefactory.sh").is_file())
+        self.assertFalse((self.root / "aifactory").exists())
+        self.assertTrue((self.root / ".github/workflows/factory-lifecycle.yml").is_file())
+        self.assertFalse((self.root / "azurefactory/pipelines").exists())
+
+    def test_scoped_github_workflow_is_exact_pinned_manual_only_template(self):
+        self.install(provider="gha")
+        installed = self.root / ".github/workflows/factory-lifecycle.yml"
+        origin = self.source / "bootstrap/templates/factory-lifecycle-gha.yml"
+        self.assertEqual(installed.read_bytes(), origin.read_bytes())
+        self.assertIn(b"workflow_dispatch:", installed.read_bytes())
+        self.assertNotIn(b"  push:", installed.read_bytes())
+        self.assertNotIn(b"  pull_request:", installed.read_bytes())
+        before = self.snapshot()
+        self.install(provider="ado", refresh_only=True)
+        self.assertEqual(installed.read_bytes(), origin.read_bytes())
+        self.assertEqual(self.snapshot()[str(installed.relative_to(self.root))],
+                         before[str(installed.relative_to(self.root))])
+
+    def test_custom_scoped_workflow_blocks_all_writes_and_is_preserved(self):
+        path = self.root / ".github/workflows/factory-lifecycle.yml"
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b"# reviewed customer workflow\r\n")
+        before = self.snapshot()
+        for dry_run in (True, False):
+            with self.assertRaisesRegex(ValueError, "conflict|modified|review"):
+                self.install(provider="gha", dry_run=dry_run)
             self.assertEqual(before, self.snapshot())
 
-    def test_modified_obsolete_workflow_is_preserved_and_blocks_all_writes(self):
-        obsolete = self.root / ".github/workflows/infra-project-esml.yml"
-        obsolete.parent.mkdir(parents=True)
-        obsolete.write_text("# customer workflow\n")
+    def test_scoped_workflow_checkout_line_endings_are_preserved(self):
+        self.install(provider="gha")
+        path = self.root / ".github/workflows/factory-lifecycle.yml"
+        path.write_bytes(consumer.normalized(path.read_bytes()).replace(b"\n", b"\r\n"))
         before = self.snapshot()
-        with self.assertRaisesRegex(ValueError, "legacy.*review|review.*migration"):
+        self.install(provider="gha")
+        self.assertEqual(before, self.snapshot())
+
+    def test_scoped_workflow_directory_conflict_is_refused_before_helper_writes(self):
+        (self.root / ".github").write_bytes(b"customer-owned")
+        before = self.snapshot()
+        with self.assertRaisesRegex(ValueError, "directory|file"):
+            self.install(provider="gha")
+        self.assertEqual(before, self.snapshot())
+
+    def test_invalid_provider_rejected_without_writes(self):
+        before = self.snapshot()
+        with self.assertRaisesRegex(ValueError, "provider"):
+            self.install(provider="legacy")
+        self.assertEqual(before, self.snapshot())
+
+    def test_refresh_only_does_not_initialize_storage(self):
+        self.install(refresh_only=True)
+        self.assertFalse((self.root / "azurefactory").exists())
+        self.assertTrue((self.root / "azurefactory.sh").is_file())
+
+    def test_legacy_aifactory_refused_without_edits_or_deletion(self):
+        for path in ("aifactory/variables.json", "aifactory/custom.yml"):
+            target = self.root / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b"customer-owned\r\n")
+        before = self.snapshot()
+        for dry_run in (True, False):
+            with self.subTest(dry_run=dry_run):
+                with self.assertRaisesRegex(ValueError, "Legacy aifactory|legacy aifactory"):
+                    self.install(dry_run=dry_run)
+                self.assertEqual(before, self.snapshot())
+
+    def test_main_refuses_legacy_before_submodule_or_repair_writes(self):
+        (self.root / "aifactory").mkdir()
+        before = self.snapshot()
+        with mock.patch.object(consumer, "ensure_submodule") as ensure, \
+                mock.patch.object(consumer, "repair_submodule") as repair, \
+                contextlib.redirect_stderr(io.StringIO()):
+            result = consumer.main(["init", "--root", str(self.root), "--repair-submodule"])
+        self.assertEqual(result, 2)
+        ensure.assert_not_called()
+        repair.assert_not_called()
+        self.assertEqual(before, self.snapshot())
+
+    def test_invalid_register_refused_before_any_helper_write(self):
+        (self.root / "azurefactory").mkdir()
+        for content in ('{}', '{"schema_version":2,"schema_version":2}', '{broken'):
+            (self.root / "azurefactory/register.json").write_text(content)
+            before = self.snapshot()
+            with self.assertRaisesRegex(ValueError, "register|JSON"):
+                self.install()
+            self.assertEqual(before, self.snapshot())
+
+    def test_nonempty_storage_without_register_is_preserved_and_refused(self):
+        (self.root / "azurefactory").mkdir()
+        (self.root / "azurefactory/customer.json").write_text("{}")
+        before = self.snapshot()
+        with self.assertRaisesRegex(ValueError, "register.json|empty"):
             self.install()
         self.assertEqual(before, self.snapshot())
 
-    def test_existing_active_config_survives_dry_run_byte_for_byte(self):
+    def test_custom_helper_conflict_blocks_every_write(self):
+        (self.root / "azurefactory.sh").write_bytes(b"# customer helper\r\n")
+        before = self.snapshot()
+        for dry_run in (True, False):
+            with self.assertRaisesRegex(ValueError, "conflict|modified|review"):
+                self.install(dry_run=dry_run)
+            self.assertEqual(before, self.snapshot())
+
+    def test_custom_workflows_are_not_copied_over_or_removed(self):
+        path = self.root / ".github/workflows/infra-common.yml"
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b"# unrelated customer workflow\r\n")
         self.install()
-        config = self.root / "aifactory/variables.json"
-        config.write_bytes(b'{"dev":{"customer":"unchanged"}}\r\n')
+        self.assertEqual(path.read_bytes(), b"# unrelated customer workflow\r\n")
+        self.assertEqual({p.name for p in path.parent.iterdir()},
+                         {"infra-common.yml", "factory-lifecycle.yml"})
+
+    def test_existing_registered_config_survives_dry_run_byte_for_byte(self):
+        self.install()
+        (self.root / "azurefactory/register.json").write_bytes(
+            (json.dumps(dict(EMPTY, generation="custom")) + "\r\n").encode())
         before = self.snapshot()
         self.install(dry_run=True)
         self.assertEqual(before, self.snapshot())
 
-    def test_refresh_preserves_git_checkout_line_endings(self):
+    def test_helper_checkout_line_endings_are_backed_up_before_upstream_refresh(self):
         self.install()
-        for relative in (".github/workflows/infra-common.yml", "aifactory/variables-template.json",
-                         "aifactory/esml-infra/azure-devops/bicep/yaml/variables/variables-template.yaml"):
-            path = self.root / relative
-            path.write_bytes(consumer.normalized(path.read_bytes()).replace(b"\n", b"\r\n"))
+        path = self.root / "azurefactory.sh"
+        canonical = path.read_bytes()
+        original = consumer.normalized(canonical).replace(b"\n", b"\r\n")
+        path.write_bytes(original)
+        self.install()
+        self.assertEqual(path.read_bytes(), canonical)
+        if original != canonical:
+            backups = list((self.root / ".aifactory-backups").glob("*/azurefactory.sh"))
+            self.assertEqual(len(backups), 1)
+            self.assertEqual(backups[0].read_bytes(), original)
+
+    def test_missing_source_fails_before_writes(self):
         before = self.snapshot()
-        self.install()
+        with self.assertRaises((ValueError, FileNotFoundError)):
+            consumer.refresh(self.root, self.root / "missing")
         self.assertEqual(before, self.snapshot())
 
-    def test_common_promotion_requires_explicit_prerequisite_scope(self):
-        with self.assertRaisesRegex(ValueError, "prerequisite"):
-            consumer.dispatch_command("common", "org/repo", "consumer-branch", "prod")
-        command = consumer.dispatch_command("common", "org/repo", "consumer-branch", "prod",
-                                            include_common_prerequisites=True)
-        for field in ("deploy_dev=true", "deploy_stage=true", "deploy_prod=true",
-                      "use_json_config_override=false"):
-            self.assertIn(field, command)
-        command = consumer.dispatch_command("common", "org/repo", "consumer-branch", "dev")
-        self.assertIn("deploy_stage=false", command)
-        self.assertIn("deploy_prod=false", command)
+    def test_nonrepository_and_nested_consumer_root_refused(self):
+        nested = self.root / "nested"
+        nested.mkdir()
+        before = self.snapshot()
+        with self.assertRaisesRegex(ValueError, "repository|root"):
+            consumer.refresh(nested, self.source)
+        self.assertEqual(before, self.snapshot())
 
-    def test_common_json_identity_is_explicit_not_forced_for_credentials_mode(self):
-        command = consumer.dispatch_command("common", "org/repo", "consumer-branch", "dev")
-        self.assertIn("use_json_config_override=false", command)
-        command = consumer.dispatch_command("common", "org/repo", "consumer-branch", "dev",
-                                            use_json_config_override=True)
-        self.assertIn("use_json_config_override=true", command)
-
-    def test_deploy_without_execute_never_calls_gh(self):
-        self.install()
-        (self.root / consumer.SUBMODULE).mkdir()
-        (self.root / consumer.SUBMODULE / ".git").write_text("fixture")
-        with mock.patch.object(consumer, "ensure_submodule", return_value=self.source), \
-                mock.patch.object(consumer.subprocess, "run") as run, \
-                contextlib.redirect_stdout(io.StringIO()):
-            code = consumer.main(["deploy", "--root", str(self.root), "--repo", "org/repo",
-                                  "--ref", "consumer-branch", "--dry-run"])
-        self.assertEqual(code, 0)
-        run.assert_not_called()
-
-    def test_default_dispatch_ref_is_current_branch_and_detached_head_fails(self):
-        self.install()
-        (self.root / consumer.SUBMODULE).mkdir()
-        (self.root / consumer.SUBMODULE / ".git").write_text("fixture")
-        for branch, expected in ((b"customer-branch\n", 0), (b"", 2)):
-            with self.subTest(branch=branch):
-                output, errors = io.StringIO(), io.StringIO()
-                with mock.patch.object(consumer, "ensure_submodule", return_value=self.source), \
-                        mock.patch.object(consumer, "git", return_value=branch), \
-                        contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
-                    code = consumer.main(["deploy", "--root", str(self.root), "--repo", "org/repo"])
-                self.assertEqual(code, expected)
-                if branch:
-                    self.assertIn("--ref customer-branch", output.getvalue())
-                else:
-                    self.assertIn("branch/ref", errors.getvalue())
-
-    def test_dispatch_failure_returns_nonzero_without_success_claim(self):
-        self.install()
-        (self.root / consumer.SUBMODULE).mkdir()
-        (self.root / consumer.SUBMODULE / ".git").write_text("fixture")
-        stdout, stderr = io.StringIO(), io.StringIO()
-        with mock.patch.object(consumer, "ensure_submodule", return_value=self.source), \
-                mock.patch.object(consumer, "validate_dispatch_ref"), \
-                mock.patch.object(consumer.subprocess, "run", return_value=mock.Mock(returncode=1)), \
-                contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-            code = consumer.main(["deploy", "--root", str(self.root), "--repo", "org/repo",
-                                  "--ref", "consumer-branch", "--execute"])
-        self.assertEqual(code, 2)
-        self.assertIn("ERROR", stderr.getvalue())
-        self.assertNotIn("accepted", stdout.getvalue())
-
-    def test_custom_workflow_is_not_overwritten(self):
-        path = self.root / ".github/workflows/infra-common.yml"
-        path.parent.mkdir(parents=True)
-        path.write_text("# user workflow\n")
-        with self.assertRaisesRegex(ValueError, "modified|conflict|review"):
+    def test_hardlinked_helper_refused_without_writes(self):
+        original = self.root / "customer.txt"
+        original.write_text("preserve")
+        os.link(original, self.root / "azurefactory.sh")
+        before = self.snapshot()
+        with self.assertRaisesRegex(ValueError, "[Hh]ard-linked"):
             self.install()
-        self.assertEqual(path.read_text(), "# user workflow\n")
-        self.assertFalse((self.root / "aifactory").exists())
+        self.assertEqual(before, self.snapshot())
 
-    def test_dispatch_requires_explicit_target_repository_and_known_target(self):
-        with self.assertRaises(ValueError):
-            consumer.dispatch_command("project", "", "release/v1.25", "dev")
-        with self.assertRaises(ValueError):
-            consumer.dispatch_command("infra-project-esml", "org/repo", "branch", "dev")
-        command = consumer.dispatch_command("project", "org/repo", "feature/setup", "stage")
-        self.assertIn("infra-project.yml", command)
-        self.assertIn("feature/setup", command)
-        self.assertIn("environment=stage", command)
-        self.assertNotIn("main", command)
+    def test_deploy_is_diagnostic_even_with_execute_and_never_runs_commands(self):
+        for arguments in ([], ["--execute", "--repo", "org/repo"], ["--dry-run"]):
+            errors = io.StringIO()
+            with mock.patch.object(consumer.subprocess, "run") as run, \
+                    contextlib.redirect_stderr(errors):
+                code = consumer.main(["deploy", *arguments])
+            self.assertEqual(code, 2)
+            self.assertFalse(run.called)
+            self.assertIn("azurefactory.sh api instructions", errors.getvalue())
+            self.assertIn("azurefactory.sh runtime deploy --help", errors.getvalue())
+
+    def test_retired_deploy_help_succeeds_without_source_or_external_commands(self):
+        output = io.StringIO()
+        with mock.patch.object(consumer.subprocess, "run") as run, \
+                contextlib.redirect_stdout(output):
+            code = consumer.main(["deploy", "--help"])
+        self.assertEqual(code, 0)
+        self.assertFalse(run.called)
+        self.assertIn("usage:", output.getvalue())
+        self.assertIn("retired", output.getvalue())
+        self.assertIn("azurefactory.sh api instructions", output.getvalue())
 
     def test_other_cwd_and_explicit_failure(self):
+        before = self.snapshot()
         result = subprocess.run(
             [sys.executable, "-B", str(ROOT / "bootstrap/consumer.py"), "refresh",
              "--root", str(self.root), "--dry-run"], cwd=self.root,
             capture_output=True, text=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("ERROR", result.stderr)
-        self.assertNotIn("Success", result.stdout)
-        self.assertEqual(list(self.root.iterdir()), [])
+        self.assertEqual(before, self.snapshot())
 
     def test_default_root_is_script_relative_from_other_cwd(self):
+        before = self.snapshot()
         result = subprocess.run(
             [sys.executable, "-B", str(ROOT / "bootstrap/consumer.py"), "refresh", "--dry-run"],
             cwd=self.root, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("no files changed", result.stdout)
-        self.assertEqual(list(self.root.iterdir()), [])
+        self.assertEqual(before, self.snapshot())
 
-    def test_shell_entrypoints_probe_python_runtime(self):
-        for name in ("01b-BYORepo-init-template-files-once.sh",
-                     "03b-GH-add-aifactory-pipelines-once.sh", "04ab-setup-infra-aifactory.sh"):
+    def test_shell_entrypoints_probe_python_runtime_and_do_not_copy_legacy_files(self):
+        for name, operation in (("01b-BYORepo-init-template-files-once.sh", "init"),
+                                ("03b-GH-add-aifactory-pipelines-once.sh", "refresh")):
             text = (ROOT / name).read_text(encoding="utf-8")
             self.assertIn("python3 -c 'import sys; sys.exit(sys.version_info < (3, 9))'", text)
             self.assertIn("python -c 'import sys; sys.exit(sys.version_info < (3, 9))'", text)
+            self.assertIn(f'consumer.py" {operation} "$@"', text)
+            self.assertNotIn("cp ", text)
 
-    def test_source_and_checked_in_workflow_copies_are_consistent(self):
-        for workflow in consumer.WORKFLOWS:
-            self.assertEqual(
-                consumer.normalized((ROOT / ".github/workflows" / workflow).read_bytes()),
-                consumer.normalized(consumer.render_workflow(self.source / consumer.SETTINGS / "github-actions" / workflow)))
-        for name in consumer.OBSOLETE_WORKFLOWS:
-            self.assertFalse((ROOT / ".github/workflows" / name).exists())
-        self.assertEqual(list((ROOT / "aifactory/parameters").glob("*.json")), [])
-
-    def test_explicit_credentials_mode_overrides_stale_oidc_secret(self):
-        source = self.source / consumer.SETTINGS / "github-actions/infra-project-phase.yml"
-        rendered = consumer.render_workflow(source).decode()
-        oidc = consumer.OIDC_CONDITION
-        credentials = consumer.CREDENTIALS_CONDITION
-        self.assertIn(oidc, rendered)
-        self.assertIn(credentials, rendered)
-        def evaluate(expression, mode, client):
-            expression = expression.replace("vars.AZURE_AUTH_MODE", repr(mode))
-            expression = expression.replace("env.AZURE_CLIENT_ID", repr(client))
-            return eval(expression.replace("&&", " and ").replace("||", " or "), {"__builtins__": {}})
-        for mode, client, expected_oidc in (
-            ("credentials", "stale-client", False), ("oidc", "client", True),
-            ("oidc", "", True), ("", "existing-client", True), ("", "", False),
-        ):
-            self.assertEqual(evaluate(oidc, mode, client), expected_oidc)
-            self.assertEqual(evaluate(credentials, mode, client), not expected_oidc)
-
-    def test_optional_workflows_support_both_auth_modes_without_widening_gateway_plan(self):
-        for name in ("infra-ai-gateway.yml", "infra-project-dashboards.yml", "infra-project-healthmodel.yml"):
-            text = consumer.render_workflow(self.source / consumer.SETTINGS / "github-actions" / name).decode()
-            self.assertIn("vars.AZURE_AUTH_MODE", text)
-            self.assertIn("creds: ${{ secrets.AZURE_CREDENTIALS }}", text)
-            self.assertIn("client-id: ${{ secrets.AZURE_CLIENT_ID }}", text)
-            self.assertIn("tenant-id: ${{ secrets.TENANT_ID }}", text)
-            self.assertIn("id-token: write", text)
-            self.assertIn("Validate BLUE authentication selection", text)
-        gateway = consumer.render_workflow(
-            self.source / consumer.SETTINGS / "github-actions/infra-ai-gateway.yml").decode()
-        self.assertEqual(gateway.count(consumer.GATEWAY_LOGIN_GATE), 2)
-
-    def test_json_identity_rejects_conflicting_credentials_selection(self):
-        for name, flag in (("infra-common.yml", "use_json_config_override"),
-                           ("infra-project-phase.yml", "json_identity_auth")):
-            text = consumer.render_workflow(self.source / consumer.SETTINGS / "github-actions" / name).decode()
-            self.assertIn("BLUE_JSON_IDENTITY: ${{ inputs." + flag + " }}", text)
-            self.assertIn("JSON identity requires OIDC", text)
+    def test_checked_in_starter_is_registered_only(self):
+        self.assertEqual(json.loads((ROOT / "azurefactory/register.json").read_text()), EMPTY)
+        self.assertFalse((ROOT / "aifactory").exists())
+        self.assertEqual(list((ROOT / ".github/workflows").glob("infra-*.yml")), [])
 
 
 if __name__ == "__main__":

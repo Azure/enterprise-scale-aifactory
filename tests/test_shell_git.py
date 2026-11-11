@@ -29,6 +29,39 @@ class ShellCheckoutTests(unittest.TestCase):
             "04ab-setup-infra-aifactory.sh",
         })
 
+    def test_job_scoped_longpaths_reaches_recursive_submodule_checkout(self):
+        with tempfile.TemporaryDirectory(prefix=".bootstrap-test-longpath-", dir=ROOT) as directory:
+            root = Path(directory)
+            source, consumer, clone = root / "source", root / "consumer", root / "clone"
+            environment = {
+                **os.environ,
+                "GIT_CONFIG_COUNT": "1",
+                "GIT_CONFIG_KEY_0": "core.longpaths",
+                "GIT_CONFIG_VALUE_0": "true",
+            }
+
+            def git(*args):
+                return subprocess.run(
+                    ["git", "-c", "protocol.file.allow=always", *args],
+                    check=True, capture_output=True, text=True, env=environment,
+                ).stdout.strip()
+
+            for path in (source, consumer):
+                git("init", str(path))
+                git("-C", str(path), "config", "user.name", "Bootstrap test")
+                git("-C", str(path), "config", "user.email", "test@example.invalid")
+            relative = Path("nested-" + "a" * 70) / ("b" * 70) / ("c" * 70) / "notebook.ipynb"
+            notebook = source / relative
+            notebook.parent.mkdir(parents=True)
+            notebook.write_text('{"cells":[]}', encoding="utf-8")
+            git("-C", str(source), "add", ".")
+            git("-C", str(source), "commit", "-m", "Long upstream path")
+            git("-C", str(consumer), "submodule", "add", str(source), "upstream")
+            git("-C", str(consumer), "commit", "-am", "Pinned submodule")
+            git("clone", "--recurse-submodules", str(consumer), str(clone))
+            self.assertEqual((clone / "upstream" / relative).read_text(), '{"cells":[]}')
+            self.assertEqual(git("-C", str(clone / "upstream"), "config", "--get", "core.longpaths"), "true")
+
     def test_autocrlf_clone_preserves_executable_shell_contract(self):
         attributes = ROOT / ".gitattributes"
         self.assertTrue(attributes.is_file(), "Fresh Windows clones need LF shell attributes.")

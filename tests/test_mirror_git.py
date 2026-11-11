@@ -66,8 +66,31 @@ class MirrorGitTests(unittest.TestCase):
 
     def test_missing_branch_refused_before_push(self):
         with self.assertRaises(gb.BootstrapError):
-            gb.mirror_git(gb.Runner(), str(self.source), str(self.destination), "missing", self.root)
+            gb.mirror_git(gb.Runner(), str(self.source), str(self.destination), "release/v1.26", self.root)
         self.assertEqual("", self.git("ls-remote", str(self.destination)))
+
+    def test_older_release_selection_refused_but_historical_refs_are_preserved(self):
+        self.git("-C", str(self.work), "branch", "release/v1.24", "v1")
+        self.git("-C", str(self.work), "push", "--mirror", str(self.source))
+        with self.assertRaisesRegex(gb.BootstrapError, "v1.25"):
+            gb.mirror_git(gb.Runner(), str(self.source), str(self.destination), "release/v1.24", self.root)
+        self.assertEqual("", self.git("ls-remote", str(self.destination)))
+        gb.mirror_git(gb.Runner(), str(self.source), str(self.destination), "release/v1.25", self.root)
+        self.assertEqual(self.refs(self.source), self.refs(self.destination))
+
+    def test_ignore_rules_protect_runtime_state_without_hiding_register_or_template(self):
+        protected = (".env", ".env.local", "azurefactory/.azurefactory/operations.sqlite",
+                     ".azurefactory-tools/azurefactory/cli.py", "receipts/approval.json",
+                     "factory.receipt.json", "factory.review.json", "factory.private.json",
+                     "factory-receipt.json", "receipt.json", ".aifactory-backups/config.json")
+        public = (".env.template", "azurefactory/register.json", "azurefactory/factory/settings.json")
+        for source in (".gitignore", ".gitignore.template"):
+            (self.work / ".gitignore").write_bytes((ROOT / source).read_bytes())
+            for path in protected + public:
+                result = subprocess.run(["git", "-C", str(self.work), "check-ignore", "--no-index", "-q", "--", path],
+                                        capture_output=True, check=False)
+                with self.subTest(source=source, path=path):
+                    self.assertEqual(result.returncode, 0 if path in protected else 1)
 
     def test_destination_populated_during_clone_refuses_and_cleans(self):
         test = self

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Retired deployment route: consumer.py emits registered CLI guidance and fails closed.
 set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -n "${AIFACTORY_PYTHON:-}" ]]; then

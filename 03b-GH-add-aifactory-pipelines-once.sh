@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Historical filename: refresh registered helpers/scoped GHA workflow, never legacy pipelines.
 set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -n "${AIFACTORY_PYTHON:-}" ]]; then

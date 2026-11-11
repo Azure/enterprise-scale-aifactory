@@ -88,6 +88,15 @@ celerybeat-schedule
 .bootstrap-mirror-*/
 .bootstrap-test-*/
 .aifactory-backups/
+.azurefactory/
+.azurefactory-tools/
+.aifactory-azure-*/
+receipts/
+*.receipt.json
+*.review.json
+*.private.json
+*-receipt.json
+receipt.json
 .consumer-test-work/
 .venv
 env/
