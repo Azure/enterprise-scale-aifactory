@@ -12,6 +12,23 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ShellCheckoutTests(unittest.TestCase):
+    script_names = (
+        "01a-GH-mirror-repo-from-template-once.sh",
+        "01b-BYORepo-init-template-files-once.sh",
+        "02b-GH-create-or-update-github-variables.sh",
+        "03b-GH-add-aifactory-pipelines-once.sh",
+        "04ab-setup-infra-aifactory.sh",
+    )
+
+    def test_only_blue_wrappers_are_executed_not_generated_upstream_launchers(self):
+        self.assertEqual(set(self.script_names), {
+            "01a-GH-mirror-repo-from-template-once.sh",
+            "01b-BYORepo-init-template-files-once.sh",
+            "02b-GH-create-or-update-github-variables.sh",
+            "03b-GH-add-aifactory-pipelines-once.sh",
+            "04ab-setup-infra-aifactory.sh",
+        })
+
     def test_autocrlf_clone_preserves_executable_shell_contract(self):
         attributes = ROOT / ".gitattributes"
         self.assertTrue(attributes.is_file(), "Fresh Windows clones need LF shell attributes.")
@@ -20,7 +37,7 @@ class ShellCheckoutTests(unittest.TestCase):
             source, clone = root / "source", root / "clone"
             source.mkdir()
             shutil.copy2(attributes, source / ".gitattributes")
-            scripts = sorted(ROOT.glob("*.sh"))
+            scripts = [ROOT / name for name in self.script_names]
             for path in scripts:
                 shutil.copy2(path, source / path.name)
             (source / "bootstrap").mkdir()
