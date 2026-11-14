@@ -12,7 +12,7 @@ from unittest.mock import patch
 from bootstrap import github_bootstrap as gb
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def valid_values():
@@ -180,7 +180,7 @@ class EnvironmentTests(unittest.TestCase):
     def test_exact_pinned_scoped_workflow_authentication_is_classified(self):
         mapping = gb.load_mapping()
         upstream = ROOT / "azure-enterprise-scale-ml"
-        self.assertEqual(mapping["upstream_commit"], "89eca66185366a702b026cec8c938570548c649c")
+        self.assertEqual(mapping["upstream_commit"], "01569fdd595e2759b51caa1d72ebde56838823cb")
         self.assertNotIn("optional_variables", mapping)
         for mode, contract in mapping["auth_modes"].items():
             path = upstream.joinpath(*contract["workflow"].split("/"))

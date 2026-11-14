@@ -6,7 +6,7 @@ import unittest
 from bootstrap import github_bootstrap as gb
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 class MirrorGitTests(unittest.TestCase):
@@ -84,7 +84,7 @@ class MirrorGitTests(unittest.TestCase):
                      "factory.receipt.json", "factory.review.json", "factory.private.json",
                      "factory-receipt.json", "receipt.json", ".aifactory-backups/config.json")
         public = (".env.template", "azurefactory/register.json", "azurefactory/factory/settings.json")
-        for source in (".gitignore", ".gitignore.template"):
+        for source in (".gitignore", "bootstrap/.gitignore.template"):
             (self.work / ".gitignore").write_bytes((ROOT / source).read_bytes())
             for path in protected + public:
                 result = subprocess.run(["git", "-C", str(self.work), "check-ignore", "--no-index", "-q", "--", path],

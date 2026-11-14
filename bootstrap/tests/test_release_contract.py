@@ -5,8 +5,8 @@ import unittest
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[1]
-PIN = "89eca66185366a702b026cec8c938570548c649c"
+ROOT = Path(__file__).resolve().parents[2]
+PIN = "01569fdd595e2759b51caa1d72ebde56838823cb"
 IMAGE_ROOT = (
     "https://raw.githubusercontent.com/jostrm/azure-enterprise-scale-ml/"
     "main/documentation/v2/10-19/images/"
@@ -29,7 +29,7 @@ class ReleaseContractTests(unittest.TestCase):
         link = (
             "[Full setup & usage guide]"
             "(https://github.com/jostrm/azure-enterprise-scale-ml/blob/"
-            "release/v1.25/documentation/v2/20-29/24-end-2-end-setup.md)"
+            "release/v1.26/documentation/v2/20-29/24-end-2-end-setup.md)"
         )
         for relative in ("README.md", "documentation/bootstrapping.md"):
             with self.subTest(page=relative):
@@ -48,7 +48,7 @@ class ReleaseContractTests(unittest.TestCase):
         self.assertIn("No legacy", notes)
         self.assertNotIn("supported legacy", docs)
         self.assertNotIn("supported layout is the upstream **legacy", docs)
-        self.assertNotIn("bash 04ab-setup-infra-aifactory.sh --repo", docs)
+        self.assertNotIn("bash aifactory.sh deploy --repo", docs)
         self.assertFalse((ROOT / "aifactory").exists())
         self.assertEqual(list((ROOT / ".github/workflows").glob("infra-*.yml")), [])
 
@@ -87,7 +87,7 @@ class ReleaseContractTests(unittest.TestCase):
             consumer[:1200],
         )
         self.assertIn("ongoing costs", consumer)
-        self.assertIn("## Quickstart - v1.25", consumer)
+        self.assertIn("## Quickstart - v1.26", consumer)
         self.assertIn("compatibility matrix", opening)
         self.assertNotIn("## Quickstart", opening)
         images = re.findall(r'!\[[^\]]*\]\(([^)]+)\)|<img\s+[^>]*src="([^"]+)"', opening)
@@ -141,7 +141,7 @@ class ReleaseContractTests(unittest.TestCase):
             "Compatibility matrix",
             "AZURE_CREDENTIALS",
             "OIDC",
-            "release_125",
+            "release_126",
             "--latest=false",
             "headSha",
         ):
@@ -155,7 +155,7 @@ class ReleaseContractTests(unittest.TestCase):
         for required in (
             "push:",
             "pull_request:",
-            "release/v1.25",
+            "release/v1.26",
             "workflow_dispatch:",
             "ubuntu-latest",
             "windows-latest",

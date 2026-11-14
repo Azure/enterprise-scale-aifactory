@@ -4,11 +4,11 @@ BLUE supports **v1.25 and newer only**, using `azurefactory/register.json`.
 It does not initialize, migrate into, refresh or deploy the legacy `aifactory/`
 configuration layout. Both configuration folders are not required.
 
-[Full setup & usage guide](https://github.com/jostrm/azure-enterprise-scale-ml/blob/release/v1.25/documentation/v2/20-29/24-end-2-end-setup.md) |
+[Full setup & usage guide](https://github.com/jostrm/azure-enterprise-scale-ml/blob/release/v1.26/documentation/v2/20-29/24-end-2-end-setup.md) |
 [Full variable documentation](https://jostrm.github.io/azure-enterprise-scale-ml/)
 
 PURPLE supplies the versioned implementation. BLUE selects
-`release/v1.25` at **`89eca66185366a702b026cec8c938570548c649c`**. The full guide
+`release/v1.26` at **`01569fdd595e2759b51caa1d72ebde56838823cb`**. The full guide
 tracks the upstream release branch; implementation references and compatibility
 evidence below remain pinned to that exact commit. Reading the guide does not
 update the submodule or select a later source revision.
@@ -32,7 +32,7 @@ Some pinned upstream notebook paths exceed Windows MAX_PATH. Use
 BLUE's CI supplies the same setting through job-scoped Git configuration before
 recursive checkout, without changing your system-wide Git settings.
 
-`.gitmodules` declares `branch = release/v1.25`. That metadata selects the branch
+`.gitmodules` declares `branch = release/v1.26`. That metadata selects the branch
 for **explicit updates**; ordinary recursive clones reproduce the **committed
 gitlink**. Bootstrap never follows `main`, uses `--remote`, or silently selects a
 new release tip. Supporting later releases requires a reviewed compatible BLUE
@@ -41,9 +41,9 @@ update, not an automatic claim that unknown future contracts work.
 ## A. GitHub mirror
 
 ```bash
-git -c core.longpaths=true clone --branch release/v1.25 --recurse-submodules \
-  https://github.com/Azure/enterprise-scale-aifactory.git blue-v125
-cd blue-v125
+git -c core.longpaths=true clone --branch release/v1.26 --recurse-submodules \
+  https://github.com/Azure/enterprise-scale-aifactory.git blue-v126
+cd blue-v126
 cp .env.template .env
 ```
 
@@ -54,17 +54,17 @@ The repository settings are `GITHUB_SOURCE_REPO`, `GITHUB_SOURCE_BRANCH`,
 `GITHUB_AUTH_MODE`. Then preview and apply:
 
 ```bash
-bash 01a-GH-mirror-repo-from-template-once.sh --dry-run
-bash 01a-GH-mirror-repo-from-template-once.sh
+bash aifactory.sh mirror --dry-run
+bash aifactory.sh mirror
 ```
 
 Explicit CLI flags override the local `.env`, for example:
 
 ```bash
-bash 01a-GH-mirror-repo-from-template-once.sh \
-  --source Azure/enterprise-scale-aifactory --source-branch release/v1.25 \
+bash aifactory.sh mirror \
+  --source Azure/enterprise-scale-aifactory --source-branch release/v1.26 \
   --destination YOUR-OWNER/YOUR-REPO --visibility private \
-  --destination-state create --default-branch release/v1.25 \
+  --destination-state create --default-branch release/v1.26 \
   --transport https --environments dev --auth-mode oidc --env-file .env --dry-run
 ```
 
@@ -93,10 +93,10 @@ The script only removes its own temporary bare clone, never an existing consumer
 checkout. Clone the destination and initialize its registered helper bundle:
 
 ```bash
-git -c core.longpaths=true clone --branch release/v1.25 --recurse-submodules \
+git -c core.longpaths=true clone --branch release/v1.26 --recurse-submodules \
   https://github.com/YOUR-OWNER/YOUR-REPO.git my-aifactory
 cd my-aifactory
-bash 01b-BYORepo-init-template-files-once.sh --provider gha
+bash aifactory.sh init --provider gha
 ```
 
 Initialization installs the manual-only scoped provider workflow locally. Review
@@ -107,19 +107,19 @@ git diff -- .github/workflows/factory-lifecycle.yml
 git status --short
 git add .github/workflows/factory-lifecycle.yml azurefactory
 git commit -m "Install pinned registered GitHub lifecycle entry point"
-git push origin release/v1.25
+git push origin release/v1.26
 ```
 
 The empty catalog may already be tracked; skip a no-change commit on reruns.
-The helper/SDK bundle is reproducible from the gitlink; run `01b` in each new
+The helper/SDK bundle is reproducible from the gitlink; run `aifactory.sh init` in each new
 local clone instead of treating generated local caches as a second implementation.
 
 For subsequent GitHub settings changes, copy/edit `.env.template` in the consumer
 and use **configuration-only** synchronization:
 
 ```bash
-bash 02b-GH-create-or-update-github-variables.sh --dry-run
-bash 02b-GH-create-or-update-github-variables.sh
+bash aifactory.sh sync --dry-run
+bash aifactory.sh sync
 ```
 
 This never clones, pushes, creates a repository or changes its default branch.
@@ -137,26 +137,26 @@ policy or change BLUE's default branch as a workaround.
 
 GitHub offers the **default branch or all branches**, not an arbitrary viewed
 branch. While BLUE's default remains older `main`, choose **Include all branches**.
-Default-only generation does not give you this v1.25 consumer. Equivalent CLI,
+Default-only generation does not give you this v1.26 consumer. Equivalent CLI,
 once the template setting is enabled:
 
 ```bash
 gh repo create YOUR-OWNER/YOUR-REPO \
   --template Azure/enterprise-scale-aifactory --include-all-branches --private
-git -c core.longpaths=true clone --branch release/v1.25 \
+git -c core.longpaths=true clone --branch release/v1.26 \
   https://github.com/YOUR-OWNER/YOUR-REPO.git my-aifactory
 cd my-aifactory
-gh repo edit YOUR-OWNER/YOUR-REPO --default-branch release/v1.25
+gh repo edit YOUR-OWNER/YOUR-REPO --default-branch release/v1.26
 git ls-tree HEAD azure-enterprise-scale-ml
 git config --file .gitmodules --get submodule.azure-enterprise-scale-ml.branch
 git config --file .gitmodules --get submodule.azure-enterprise-scale-ml.url
 git -c core.longpaths=true submodule update --init --recursive
 git -C azure-enterprise-scale-ml rev-parse HEAD
-bash 01b-BYORepo-init-template-files-once.sh --provider gha
+bash aifactory.sh init --provider gha
 ```
 
-Expect mode `160000`, SHA `89eca66185366a702b026cec8c938570548c649c`,
-branch `release/v1.25`, and URL
+Expect mode `160000`, SHA `01569fdd595e2759b51caa1d72ebde56838823cb`,
+branch `release/v1.26`, and URL
 `https://github.com/jostrm/azure-enterprise-scale-ml`. The initialized submodule
 must report the same SHA. Generated branches have unrelated histories; do not
 merge generated `main` into the release just to expose workflows.
@@ -166,12 +166,12 @@ a disposable GitHub repository. Local Git tests prove cloning, initialization
 and repair, not GitHub's generation service. If metadata/gitlink did not survive:
 
 ```bash
-bash 01b-BYORepo-init-template-files-once.sh --repair-submodule --dry-run
-bash 01b-BYORepo-init-template-files-once.sh --repair-submodule --provider gha
+bash aifactory.sh init --repair-submodule --dry-run
+bash aifactory.sh init --repair-submodule --provider gha
 git diff --cached --submodule=log
 git add .gitmodules azure-enterprise-scale-ml
-git commit -m "Restore pinned v1.25 shared implementation"
-git push origin release/v1.25
+git commit -m "Restore pinned v1.26 shared implementation"
+git push origin release/v1.26
 ```
 
 Repair refuses populated untracked source paths, conflicting pins and modified
@@ -194,32 +194,32 @@ New repository > Git**, without a README. Use normal Git Credential Manager or
 approved SSH authentication, never a token in the URL. You need repository
 Read/Contribute/Create branch and, if creating it, Create repository permission.
 
-Use an approved local BLUE `release/v1.25` checkout as `BLUE_SOURCE`. The following
+Use an approved local BLUE `release/v1.26` checkout as `BLUE_SOURCE`. The following
 initializes local registered configuration and helpers only:
 
 ```bash
-BLUE_SOURCE="/absolute/path/to/blue-v125"
-PURPLE_SHA=89eca66185366a702b026cec8c938570548c649c
+BLUE_SOURCE="/absolute/path/to/blue-v126"
+PURPLE_SHA=01569fdd595e2759b51caa1d72ebde56838823cb
 git clone https://dev.azure.com/YOUR-ORG/YOUR-PROJECT/_git/YOUR-REPO my-aifactory
 cd my-aifactory
-git switch -c release/v1.25
-git -c core.longpaths=true submodule add --branch release/v1.25 \
+git switch -c release/v1.26
+git -c core.longpaths=true submodule add --branch release/v1.26 \
   https://github.com/jostrm/azure-enterprise-scale-ml azure-enterprise-scale-ml
 git -C azure-enterprise-scale-ml -c core.longpaths=true checkout --detach "$PURPLE_SHA"
 git add .gitmodules azure-enterprise-scale-ml
 mkdir bootstrap
 cp "$BLUE_SOURCE/bootstrap/consumer.py" bootstrap/
-cp "$BLUE_SOURCE/01b-BYORepo-init-template-files-once.sh" .
+cp "$BLUE_SOURCE/aifactory.sh" .
 cp "$BLUE_SOURCE/.gitignore" .
 cp "$BLUE_SOURCE/.gitattributes" .
-bash 01b-BYORepo-init-template-files-once.sh --provider ado --dry-run
-bash 01b-BYORepo-init-template-files-once.sh --provider ado
+bash aifactory.sh init --provider ado --dry-run
+bash aifactory.sh init --provider ado
 git status --short
 # Review the empty register and required generated helper bundle; no credentials.
 git add .
 git diff --cached --stat
-git commit -m "Initialize pinned v1.25 registered consumer"
-git push -u origin release/v1.25
+git commit -m "Initialize pinned v1.26 registered consumer"
+git push -u origin release/v1.26
 ```
 
 Set the new repository's default branch according to your approved policy.
@@ -268,15 +268,15 @@ template and `.azurefactory-tools/` SDK/CLI/persona bundle. Those dependencies
 are required; copying a root launcher by itself is insufficient.
 
 ```bash
-bash 01b-BYORepo-init-template-files-once.sh --dry-run
-bash 01b-BYORepo-init-template-files-once.sh
-bash 03b-GH-add-aifactory-pipelines-once.sh --dry-run
-bash 03b-GH-add-aifactory-pipelines-once.sh
+bash aifactory.sh init --dry-run
+bash aifactory.sh init
+bash aifactory.sh refresh --dry-run
+bash aifactory.sh refresh
 ```
 
 Both use the reviewed pin and operate relative to the consumer, not the caller's
-working directory. The old `03b` filename now means registered helper/provider
-refresh, not installation of legacy `infra-*` workflows. `04ab` no longer
+working directory. `aifactory.sh refresh` (the old `03b` script) means registered helper/provider
+refresh, not installation of legacy `infra-*` workflows. `aifactory.sh deploy` (the old `04ab`) no longer
 dispatches legacy infrastructure workflows; use the registered API review path.
 `--provider ado|gha|both` selects provider support. Reruns preserve the registered
 catalog, generated configuration projections, `.env`, existing secrets and
@@ -307,7 +307,7 @@ On Windows, if the upstream launcher selects an unusable Python Store alias, set
 The API folder argument is the absolute **API-host** `azurefactory` directory,
 not the consumer root; remote clients must not supply a laptop-only path.
 
-Follow the [Full setup & usage guide](https://github.com/jostrm/azure-enterprise-scale-ml/blob/release/v1.25/documentation/v2/20-29/24-end-2-end-setup.md).
+Follow the [Full setup & usage guide](https://github.com/jostrm/azure-enterprise-scale-ml/blob/release/v1.26/documentation/v2/20-29/24-end-2-end-setup.md).
 Explicitly select version `125`; do not accept a default `main` or `124`.
 The helper gitlink and the factory's runtime version selection are distinct:
 inspect the prepared operation's resolved source SHA and require this reviewed
@@ -374,8 +374,8 @@ the compatibility evidence, not graph freshness or deployment proof.
 
 | Surface | Upstream source | BLUE entry/configuration | Coverage or gap |
 |---|---|---|---|
-| Registered initialization | `P/01-start-v125-and-above.sh`, `bootstrap/lib/registered_setup.py`, `initialize_azurefactory.py` | `01b`, `bootstrap/consumer.py`, `azurefactory/register.json` | Empty register, complete helper bundle, no legacy consumer or deployment |
-| Safe helper refresh | Same registered installer; `bootstrap_no_delete.Merge` | `03b`, `--provider` selection | Existing catalog/projections preserved; no competing BLUE catalog writer |
+| Registered initialization | `P/01-start-v125-and-above.sh`, `bootstrap/lib/registered_setup.py`, `initialize_azurefactory.py` | `aifactory.sh init`, `bootstrap/consumer.py`, `azurefactory/register.json` | Empty register, complete helper bundle, no legacy consumer or deployment |
+| Safe helper refresh | Same registered installer; `bootstrap_no_delete.Merge` | `aifactory.sh refresh`, `--provider` selection | Existing catalog/projections preserved; no competing BLUE catalog writer |
 | Configuration and lifecycle | `P/bootstrap/azurefactory.sh`, `environment_setup/azurefactory-cli` | Generated `.azurefactory-tools`, `azurefactory.sh`, provider wrappers | API required; creation/configuration/confirmation distinct from execution |
 | GitHub scoped provider | `P/bootstrap/templates/factory-lifecycle-gha.yml` | `.github/workflows/factory-lifecycle.yml` | Manual-only, OIDC, protected reviewed plan; exact upstream template, not legacy infra workflows |
 | Azure DevOps scoped provider | `P/bootstrap/templates/factory-lifecycle-ado.yml`; `factory_lifecycle.py::SCOPED_ADO` | Registered ADO wrapper/CLI | Local initialization works; conflicting upstream fixed `aifactory/pipelines` location blocks a no-legacy end-to-end provider install at this pin |
@@ -389,7 +389,7 @@ The selected source also documents a blocked **integrated access-hub** combinati
 (`access_hub_mode=integrated`, `setup_hub_access=true`). Configuration can be saved
 without making deployment executable. Do not silently substitute an external/no-hub
 topology or bypass source guards. Read the
-[pinned limitation](https://github.com/jostrm/azure-enterprise-scale-ml/blob/89eca66185366a702b026cec8c938570548c649c/documentation/v2/20-29/24-end-2-end-setup.md#current-integrated-hub-limitation).
+[pinned limitation](https://github.com/jostrm/azure-enterprise-scale-ml/blob/01569fdd595e2759b51caa1d72ebde56838823cb/documentation/v2/20-29/24-end-2-end-setup.md#current-integrated-hub-limitation).
 
 ## Upgrades and existing legacy consumers
 
@@ -406,7 +406,7 @@ metadata and tests. Fetching alone is safe; checking out a later source does not
 make it compatible or migrate the catalog:
 
 ```bash
-git -C azure-enterprise-scale-ml fetch origin release/v1.25
+git -C azure-enterprise-scale-ml fetch origin release/v1.26
 # Review before selecting a new immutable source and matching BLUE update.
 git diff --submodule=log
 ```
@@ -420,7 +420,7 @@ reviewed lifecycle operation with retention/ownership rules.
 `bootstrap-consumer-tests.yml` runs mocked/source-contract tests and disposable
 local-Git integration tests on Linux and Windows Git Bash, with no Azure credentials
 or deployment. Windows long-path handling is active before recursive checkout.
-Relevant pushes and pull requests target `release/v1.25`; manual dispatch is
+Relevant pushes and pull requests target `release/v1.26` and `release/v1.26`; manual dispatch is
 declared but discoverability requires the workflow on the default branch. BLUE's
 unchanged `main` means its release evidence should use the release-branch push run.
 
@@ -440,10 +440,10 @@ Only when separately authorized, after inspecting existing branch/tag/release an
 successful required checks, publish without moving an existing tag:
 
 ```bash
-git tag -a release_125 "$BLUE_SHA" -m "Release v1.25"
+git tag -a release_126 "$BLUE_SHA" -m "Release v1.26"
 git push origin refs/tags/release_125
 gh release create release_125 --repo Azure/enterprise-scale-aifactory \
-  --verify-tag --target release/v1.25 --title "Release v1.25" \
+  --verify-tag --target release/v1.26 --title "Release v1.26" \
   --notes-file bootstrap/release-notes.txt --latest=false
 ```
 

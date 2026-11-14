@@ -12,7 +12,7 @@ import unittest
 from uuid import uuid4
 from unittest import mock
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from bootstrap import consumer
 
@@ -32,7 +32,7 @@ class ConsumerGitTests(unittest.TestCase):
         self.root.mkdir(parents=True)
         self.upstream = self.root / "upstream"
         self.upstream.mkdir()
-        git(self.upstream, "init", "-b", "release/v1.25")
+        git(self.upstream, "init", "-b", consumer.BRANCH)
         (self.upstream / "version").write_text("pinned")
         git(self.upstream, "add", ".")
         git(self.upstream, "commit", "-m", "Pinned fixture")
@@ -98,7 +98,7 @@ class ConsumerGitTests(unittest.TestCase):
 
     def test_local_checkout_ahead_of_gitlink_is_not_reset(self):
         git(self.parent / consumer.SUBMODULE, "fetch", "origin")
-        git(self.parent / consumer.SUBMODULE, "checkout", "origin/release/v1.25")
+        git(self.parent / consumer.SUBMODULE, "checkout", f"origin/{consumer.BRANCH}")
         newer = git(self.parent / consumer.SUBMODULE, "rev-parse", "HEAD")
         with self.assertRaisesRegex(ValueError, "differs.*pin"):
             consumer.ensure_submodule(self.parent, expected=self.pin)
@@ -132,7 +132,7 @@ class ConsumerGitTests(unittest.TestCase):
             consumer.ensure_submodule(repaired, expected=self.pin)
         self.assertEqual(git(repaired / consumer.SUBMODULE, "rev-parse", "HEAD"), self.pin)
         self.assertEqual(git(repaired, "config", "--file", ".gitmodules", "--get",
-                             f"submodule.{consumer.SUBMODULE}.branch"), "release/v1.25")
+                             f"submodule.{consumer.SUBMODULE}.branch"), consumer.BRANCH)
         self.assertIn(self.pin, git(repaired, "ls-files", "--stage", "--", consumer.SUBMODULE))
         consumer.repair_submodule(repaired, expected=self.pin, url=str(self.upstream))
 
@@ -186,7 +186,7 @@ class ConsumerGitTests(unittest.TestCase):
 
         (target / "bootstrap").mkdir()
         shutil.copy2(ROOT / "bootstrap/consumer.py", target / "bootstrap/consumer.py")
-        script = "01b-BYORepo-init-template-files-once.sh"
+        script = "aifactory.sh"
         shutil.copy2(ROOT / script, target / script)
         shutil.copy2(ROOT / ".gitignore", target / ".gitignore")
         shutil.copy2(ROOT / ".gitattributes", target / ".gitattributes")
@@ -204,7 +204,7 @@ class ConsumerGitTests(unittest.TestCase):
 
         before = snapshot()
         for args in (["--dry-run", "--provider", "ado"], ["--provider", "ado"]):
-            result = subprocess.run([bash, str(target / script), *args], cwd=self.root,
+            result = subprocess.run([bash, str(target / script), "init", *args], cwd=self.root,
                                     capture_output=True, text=True, timeout=90)
             self.assertEqual(result.returncode, 0, result.stderr)
             if "--dry-run" in args:
@@ -215,7 +215,7 @@ class ConsumerGitTests(unittest.TestCase):
         document["ownership_evidence"] = {"customer": "preserved"}
         config.write_bytes((json.dumps(document) + "\r\n").encode())
         before = snapshot()
-        result = subprocess.run([bash, str(target / script), "--provider", "ado"], cwd=self.root,
+        result = subprocess.run([bash, str(target / script), "init", "--provider", "ado"], cwd=self.root,
                                 capture_output=True, text=True, timeout=90)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(before, snapshot())
@@ -229,10 +229,8 @@ class ConsumerGitTests(unittest.TestCase):
         self.assertTrue((target / "lib/bootstrap_no_delete.py").is_file())
         self.assertTrue((target / ".azurefactory-tools/azurefactory/cli.py").is_file())
         self.assertTrue((target / ".azurefactory-tools/persona-engine/personas/pipeline.py").is_file())
-        refresh_script = "03b-GH-add-aifactory-pipelines-once.sh"
-        shutil.copy2(ROOT / refresh_script, target / refresh_script)
         register_bytes = config.read_bytes()
-        result = subprocess.run([bash, str(target / refresh_script), "--provider", "gha"],
+        result = subprocess.run([bash, str(target / script), "refresh", "--provider", "gha"],
                                 cwd=self.root, capture_output=True, text=True, timeout=90)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue((target / "GHA-azurefactory.sh").is_file())
@@ -244,11 +242,9 @@ class ConsumerGitTests(unittest.TestCase):
                          (selected / "bootstrap/templates/factory-lifecycle-gha.yml").read_bytes())
         self.assertEqual({p.name for p in scoped_workflow.parent.iterdir()}, {"factory-lifecycle.yml"})
         self.assertFalse((target / "azurefactory/pipelines").exists())
-        deploy_script = "04ab-setup-infra-aifactory.sh"
-        shutil.copy2(ROOT / deploy_script, target / deploy_script)
         before = snapshot()
         result = subprocess.run(
-            [bash, str(target / deploy_script), "--execute", "--repo", "org/repo"],
+            [bash, str(target / script), "deploy", "--execute", "--repo", "org/repo"],
             cwd=self.root, capture_output=True, text=True, timeout=90)
         self.assertEqual(result.returncode, 2)
         self.assertIn("azurefactory.sh runtime deploy --help", result.stderr)

@@ -1,13 +1,23 @@
-## BLUE v1.25+ registered consumer
+## BLUE v1.26 registered consumer (v1.25+ layout)
 
 BLUE bootstraps the repository you own; PURPLE supplies the versioned shared
 implementation through the azure-enterprise-scale-ml submodule.
 
-PURPLE release/v1.25 is pinned to:
-89eca66185366a702b026cec8c938570548c649c
+PURPLE release/v1.26 is pinned to:
+01569fdd595e2759b51caa1d72ebde56838823cb
 
 Ordinary recursive clones reproduce the committed gitlink, not a moving upstream
-HEAD. Branch metadata is release/v1.25; upgrades remain explicit reviewed commits.
+HEAD. Branch metadata is release/v1.26; upgrades remain explicit reviewed commits.
+
+## v1.26 slim repository
+
+- One entry script, aifactory.sh, replaces the five numbered wrappers:
+  01a -> mirror, 01b -> init, 02b -> sync, 03b -> refresh, 04ab -> deploy (still retired).
+- Root: four folders (azure-enterprise-scale-ml, azurefactory, bootstrap, documentation)
+  plus .github; README.md is the only root Markdown page. CODE_OF_CONDUCT, CONTRIBUTING,
+  SECURITY and SUPPORT moved to .github/; tests moved to bootstrap/tests/;
+  .gitignore.template moved to bootstrap/.
+- PURPLE release/v1.26 is the slim v1.25: same registered contract, fewer files.
 
 ## Registered layout only
 
@@ -26,7 +36,7 @@ existing catalog configuration or starting Azure operations.
 
 - Full GitHub mirror to an explicitly new/empty destination; configuration-only
   reruns never repeat repository initialization.
-- GitHub native template route includes all branches, then selects release/v1.25
+- GitHub native template route includes all branches, then selects release/v1.26
   in the consumer; template metadata/gitlink inspection and repair are documented.
 - Empty Azure DevOps repositories can initialize the registered catalog and
   pinned helper bundle. Provider execution has a documented upstream limitation.
@@ -59,7 +69,7 @@ The selected upstream also documents an integrated access-hub deployment limitat
 Do not bypass it by switching to legacy scripts or silently selecting another topology.
 
 See the compatibility matrix, three onboarding routes and update guidance:
-https://github.com/Azure/enterprise-scale-aifactory/blob/release/v1.25/documentation/bootstrapping.md
+https://github.com/Azure/enterprise-scale-aifactory/blob/release/v1.26/documentation/bootstrapping.md
 
 ## Prerequisites and upgrade
 

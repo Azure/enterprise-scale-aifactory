@@ -11,8 +11,8 @@ import sys
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 SUBMODULE = "azure-enterprise-scale-ml"
-PIN = "89eca66185366a702b026cec8c938570548c649c"
-BRANCH = "release/v1.25"
+PIN = "01569fdd595e2759b51caa1d72ebde56838823cb"
+BRANCH = "release/v1.26"
 SOURCE_URL = "https://github.com/jostrm/azure-enterprise-scale-ml"
 SCOPED_GHA = Path(".github/workflows/factory-lifecycle.yml")
 SCOPED_GHA_TEMPLATE = Path("bootstrap/templates/factory-lifecycle-gha.yml")
@@ -31,9 +31,9 @@ ENTRY_POINTS = {
     "registered_installer": "bootstrap/lib/registered_setup.py",
 }
 
-DEPLOY_DIAGNOSTIC = """ERROR: 04ab/deploy is retired: BLUE supports registered azurefactory/register.json only.
+DEPLOY_DIAGNOSTIC = """ERROR: deploy is retired: BLUE supports registered azurefactory/register.json only.
 No workflow was dispatched and no deployment was performed.
-Initialize locally: bash ./01b-BYORepo-init-template-files-once.sh
+Initialize locally: bash ./aifactory.sh init
 Then inspect the registered CLI:
   bash ./azurefactory.sh api instructions
   bash ./azurefactory.sh doctor
@@ -189,7 +189,7 @@ def ensure_submodule(root, *, expected=PIN, dry_run=False):
     validate_consumer(root)
     metadata = module_metadata(root)
     if metadata["path"] != SUBMODULE or not metadata["url"]:
-        raise ValueError("Missing .gitmodules registration; use 01b --repair-submodule explicitly.")
+        raise ValueError("Missing .gitmodules registration; use aifactory.sh init --repair-submodule explicitly.")
     if metadata["branch"] not in ("", BRANCH):
         raise ValueError("Submodule branch metadata conflicts with the selected release.")
     entry = git(root, "ls-files", "--stage", "--", SUBMODULE).decode().split()
@@ -313,7 +313,7 @@ def main(argv=None):
     if argv and argv[0] == "deploy":
         if argv[1:] in (["--help"], ["-h"]):
             argparse.ArgumentParser(
-                prog="04ab-setup-infra-aifactory.sh",
+                prog="aifactory.sh deploy",
                 description=DEPLOY_DIAGNOSTIC.removeprefix("ERROR: "),
                 formatter_class=argparse.RawDescriptionHelpFormatter,
             ).print_help()
@@ -334,7 +334,7 @@ def main(argv=None):
         validate_consumer(root)
         if args.repair_submodule:
             if args.operation != "init":
-                raise ValueError("--repair-submodule applies only to init (01b).")
+                raise ValueError("--repair-submodule applies only to init.")
             repair_submodule(root, dry_run=args.dry_run)
             if args.dry_run:
                 source = root / SUBMODULE

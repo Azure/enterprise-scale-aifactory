@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "upstream_commit": "89eca66185366a702b026cec8c938570548c649c",
+  "upstream_commit": "01569fdd595e2759b51caa1d72ebde56838823cb",
   "description": "GitHub remote environment settings only, shared by mirror and sync. No registered catalog, RuntimeBinding, workflow, Azure federation, API authentication or deployment is configured. Select the auth mode matching the reviewed provider workflow; API-generated workflows require separate inspection against the installed backend. Blank/omitted values preserve existing settings on sync. Unknown .env keys are rejected, including obsolete infrastructure settings.",
   "environment_source": "{ENV}_GITHUB_ENVIRONMENT",
   "auth_modes": {
