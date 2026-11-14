@@ -250,7 +250,7 @@ class ConsumerGitTests(unittest.TestCase):
         self.assertIn("azurefactory.sh runtime deploy --help", result.stderr)
         self.assertEqual(before, snapshot())
         result = subprocess.run(
-            [bash, str(target / script), "--repair-submodule", "--dry-run", "--provider", "ado"],
+            [bash, str(target / script), "init", "--repair-submodule", "--dry-run", "--provider", "ado"],
             cwd=self.root, capture_output=True, text=True, timeout=90)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Registered plan", result.stdout)
