@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-PIN = "01569fdd595e2759b51caa1d72ebde56838823cb"
+PIN = "f60e3eb9f2b240417b4941f70ec6902731f5394e"
 IMAGE_ROOT = (
     "https://raw.githubusercontent.com/jostrm/azure-enterprise-scale-ml/"
     "main/documentation/v2/10-19/images/"

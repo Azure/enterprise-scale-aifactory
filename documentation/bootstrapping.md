@@ -8,7 +8,7 @@ configuration layout. Both configuration folders are not required.
 [Full variable documentation](https://jostrm.github.io/azure-enterprise-scale-ml/)
 
 PURPLE supplies the versioned implementation. BLUE selects
-`release/v1.26` at **`01569fdd595e2759b51caa1d72ebde56838823cb`**. The full guide
+`release/v1.26` at **`f60e3eb9f2b240417b4941f70ec6902731f5394e`**. The full guide
 tracks the upstream release branch; implementation references and compatibility
 evidence below remain pinned to that exact commit. Reading the guide does not
 update the submodule or select a later source revision.
@@ -155,7 +155,7 @@ git -C azure-enterprise-scale-ml rev-parse HEAD
 bash aifactory.sh init --provider gha
 ```
 
-Expect mode `160000`, SHA `01569fdd595e2759b51caa1d72ebde56838823cb`,
+Expect mode `160000`, SHA `f60e3eb9f2b240417b4941f70ec6902731f5394e`,
 branch `release/v1.26`, and URL
 `https://github.com/jostrm/azure-enterprise-scale-ml`. The initialized submodule
 must report the same SHA. Generated branches have unrelated histories; do not
@@ -199,7 +199,7 @@ initializes local registered configuration and helpers only:
 
 ```bash
 BLUE_SOURCE="/absolute/path/to/blue-v126"
-PURPLE_SHA=01569fdd595e2759b51caa1d72ebde56838823cb
+PURPLE_SHA=f60e3eb9f2b240417b4941f70ec6902731f5394e
 git clone https://dev.azure.com/YOUR-ORG/YOUR-PROJECT/_git/YOUR-REPO my-aifactory
 cd my-aifactory
 git switch -c release/v1.26
@@ -389,7 +389,7 @@ The selected source also documents a blocked **integrated access-hub** combinati
 (`access_hub_mode=integrated`, `setup_hub_access=true`). Configuration can be saved
 without making deployment executable. Do not silently substitute an external/no-hub
 topology or bypass source guards. Read the
-[pinned limitation](https://github.com/jostrm/azure-enterprise-scale-ml/blob/01569fdd595e2759b51caa1d72ebde56838823cb/documentation/v2/20-29/24-end-2-end-setup.md#current-integrated-hub-limitation).
+[pinned limitation](https://github.com/jostrm/azure-enterprise-scale-ml/blob/f60e3eb9f2b240417b4941f70ec6902731f5394e/documentation/v2/20-29/24-end-2-end-setup.md#current-integrated-hub-limitation).
 
 ## Upgrades and existing legacy consumers
 
