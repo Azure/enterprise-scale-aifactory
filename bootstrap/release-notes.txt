@@ -4,7 +4,7 @@ BLUE bootstraps the repository you own; PURPLE supplies the versioned shared
 implementation through the azure-enterprise-scale-ml submodule.
 
 PURPLE release/v1.26 is pinned to:
-01569fdd595e2759b51caa1d72ebde56838823cb
+f60e3eb9f2b240417b4941f70ec6902731f5394e
 
 Ordinary recursive clones reproduce the committed gitlink, not a moving upstream
 HEAD. Branch metadata is release/v1.26; upgrades remain explicit reviewed commits.
@@ -18,6 +18,8 @@ HEAD. Branch metadata is release/v1.26; upgrades remain explicit reviewed commit
   SECURITY and SUPPORT moved to .github/; tests moved to bootstrap/tests/;
   .gitignore.template moved to bootstrap/.
 - PURPLE release/v1.26 is the slim v1.25: same registered contract, fewer files.
+- PURPLE release/v1.26 also carries Terraform (azurerm + azapi) for the factory foundation
+  (esml-common 11/12/13) in environment_setup/aifactory/terraform; Bicep stays the default.
 
 ## Registered layout only
 
