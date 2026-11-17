@@ -72,18 +72,24 @@ class ReleaseContractTests(unittest.TestCase):
                         f"{relative}: source path absent from selected release: {target}",
                     )
 
+    def test_readme_uses_public_repository_terminology(self):
+        text = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertNotRegex(text, r"(?i)\b(?:blue|purple)\b")
+        self.assertIn("This repo", text)
+        self.assertIn("common functionality", text)
+
     def test_readme_opening_matches_upstream_artwork_before_consumer_welcome(self):
         text = (ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertEqual(text.count("\n# Welcome to BLUE\n"), 1)
-        opening, consumer = text.split("\n# Welcome to BLUE\n")
-        self.assertIn("BLUE consumer", opening.splitlines()[0])
-        self.assertIn("PURPLE", opening)
+        self.assertEqual(text.count("\n# Welcome to this repo\n"), 1)
+        opening, consumer = text.split("\n# Welcome to this repo\n")
+        self.assertIn("consumer repository", opening.splitlines()[0])
+        self.assertIn("common functionality", opening)
         self.assertIn("Git submodule", opening)
         self.assertLess(len(opening), 8500)
         self.assertLess(len(consumer), 6500)
         self.assertIn(
-            "BLUE bootstraps your consumer repository; PURPLE supplies the versioned "
-            "shared implementation through a Git submodule.",
+            "This repo bootstraps your consumer repository; versioned common "
+            "functionality is supplied through a Git submodule.",
             consumer[:1200],
         )
         self.assertIn("ongoing costs", consumer)
