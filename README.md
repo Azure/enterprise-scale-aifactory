@@ -95,7 +95,7 @@ This initializes the empty registered catalog and the CLI/helper bundle from the
 | Route | Start here |
 |---|---|
 | GitHub full mirror to a confirmed new/empty repository | [Mirror bootstrap and `.env` setup](documentation/bootstrapping.md#a-github-mirror) |
-| GitHub **Use this template** | [Include all branches, then select v1.25](documentation/bootstrapping.md#b-github-use-this-template) |
+| GitHub **Use this template** | [Button instructions and template-vs-mirror comparison](documentation/bootstrapping.md#b-github-use-this-template) |
 | Empty Azure DevOps / bring your own repository | [Copy-ready setup and pipeline configuration](documentation/bootstrapping.md#c-empty-azure-devops-or-bring-your-own-repository) |
 
 The v1.25 gitlink pins the common functionality to commit `89eca66185366a702b026cec8c938570548c649c`. Recursive clones reproduce that commit; branch metadata is only for explicit future updates.

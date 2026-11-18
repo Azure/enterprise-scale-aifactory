@@ -154,6 +154,68 @@ class ReleaseContractTests(unittest.TestCase):
             self.assertIn(required, text)
         self.assertIn("not tested", text.lower())
 
+    def test_template_guide_covers_button_steps_and_post_creation_setup(self):
+        text = (ROOT / "documentation/bootstrapping.md").read_text(encoding="utf-8")
+        section = text.split("## B. GitHub Use this template\n", 1)[1].split(
+            "## C. Empty Azure DevOps or bring your own repository\n", 1
+        )[0]
+        for required in (
+            'How to use the "Use this template" button',
+            "Create a new repository",
+            "Owner",
+            "Include all branches",
+            "Create repository from template",
+            "is_template=true",
+            "2026-11-18",
+            "Default-only",
+            "current `main`",
+            "--include-all-branches",
+            "--default-branch release/v1.25",
+            "160000",
+            PIN,
+            "--repair-submodule --dry-run",
+            ".github/workflows/factory-lifecycle.yml",
+            "02b-GH-create-or-update-github-variables.sh",
+            "GITHUB_DESTINATION_REPO",
+            "workflow_dispatch",
+            "not tested",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, section)
+        self.assertNotIn("default remains older", section)
+        self.assertNotIn("Default-only generation does not give", section)
+        self.assertNotIn("setting was `false`", section)
+
+    def test_template_guide_compares_native_generation_with_actual_mirror_script(self):
+        text = (ROOT / "documentation/bootstrapping.md").read_text(encoding="utf-8")
+        comparison = text.split("### Template versus programmatic mirror: pros and cons\n", 1)[1]
+        for required in (
+            "01a-GH-mirror-repo-from-template-once.sh",
+            "single commit",
+            "unrelated histories",
+            "tags",
+            "existing-empty",
+            "--dry-run",
+            "OIDC",
+            "Git LFS",
+            "not automatically",
+            "Never run the mirror script against a template-created",
+            "bootstrap/github_bootstrap.py",
+            "bootstrap/consumer.py",
+            "tests/test_mirror_git.py",
+            "tests/test_consumer_git.py",
+            "https://docs.github.com/en/repositories/creating-and-managing-repositories/duplicating-a-repository",
+            "https://cli.github.com/manual/gh_repo_create",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, comparison)
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn(
+            "[Button instructions and template-vs-mirror comparison]"
+            "(documentation/bootstrapping.md#b-github-use-this-template)",
+            readme,
+        )
+
     def test_ci_covers_release_and_both_shell_platforms(self):
         path = ROOT / ".github/workflows/bootstrap-consumer-tests.yml"
         self.assertTrue(path.exists())
