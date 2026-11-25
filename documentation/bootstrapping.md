@@ -574,8 +574,8 @@ successful required checks, publish without moving an existing tag:
 
 ```bash
 git tag -a release_126 "$BLUE_SHA" -m "Release v1.26"
-git push origin refs/tags/release_125
-gh release create release_125 --repo Azure/enterprise-scale-aifactory \
+git push origin refs/tags/release_126
+gh release create release_126 --repo Azure/enterprise-scale-aifactory \
   --verify-tag --target release/v1.26 --title "Release v1.26" \
   --notes-file bootstrap/release-notes.txt --latest=false
 ```

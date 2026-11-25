@@ -255,5 +255,12 @@ class ReleaseContractTests(unittest.TestCase):
         self.assertIn("No Azure deployment", text)
 
 
+    def test_release_publication_tags_pushes_and_releases_one_name(self):
+        docs = (ROOT / "documentation/bootstrapping.md").read_text(encoding="utf-8")
+        section = docs[docs.index("## Validation and release publication"):]
+        names = set(re.findall(r"git tag -a (release_\d+)|refs/tags/(release_\d+)|gh release create (release_\d+)", section))
+        flat = {n for group in names for n in group if n}
+        self.assertEqual(flat, {"release_126"}, "tag, push and release must use release_126")
+
 if __name__ == "__main__":
     unittest.main()
