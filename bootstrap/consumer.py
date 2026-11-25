@@ -11,7 +11,7 @@ import sys
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 SUBMODULE = "azure-enterprise-scale-ml"
-PIN = "f60e3eb9f2b240417b4941f70ec6902731f5394e"
+PIN = "a8b68eab54d00d7276ff4d8b659f940af8c37f94"
 BRANCH = "release/v1.26"
 SOURCE_URL = "https://github.com/jostrm/azure-enterprise-scale-ml"
 SCOPED_GHA = Path(".github/workflows/factory-lifecycle.yml")

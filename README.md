@@ -57,8 +57,8 @@ Explore the <a href="https://jostrm.github.io/azure-enterprise-scale-ml/resource
 <a href="documentation/bootstrapping.md"><b>Set up BLUE</b></a> &nbsp;|&nbsp;
 <a href="https://github.com/jostrm/azure-enterprise-scale-ml/blob/main/documentation/v2/10-19/10-factory-onion-architecture-v2.md"><b>Architecture</b></a> &nbsp;|&nbsp;
 <a href="https://github.com/jostrm/azure-enterprise-scale-ml/blob/main/documentation/v2/10-19/22-lifecycle-azure-function.md"><b>Lifecycle API</b></a> &nbsp;|&nbsp;
-<a href="https://github.com/jostrm/azure-enterprise-scale-ml/blob/f60e3eb9f2b240417b4941f70ec6902731f5394e/usecase_code/40-agent-factory/readme.md"><b>Agent Factory</b></a> &nbsp;|&nbsp;
-<a href="https://github.com/jostrm/azure-enterprise-scale-ml/blob/f60e3eb9f2b240417b4941f70ec6902731f5394e/usecase_code/50-ml-model-factory/readme.md"><b>ML Factory</b></a> &nbsp;|&nbsp;
+<a href="https://github.com/jostrm/azure-enterprise-scale-ml/blob/a8b68eab54d00d7276ff4d8b659f940af8c37f94/usecase_code/40-agent-factory/readme.md"><b>Agent Factory</b></a> &nbsp;|&nbsp;
+<a href="https://github.com/jostrm/azure-enterprise-scale-ml/blob/a8b68eab54d00d7276ff4d8b659f940af8c37f94/usecase_code/50-ml-model-factory/readme.md"><b>ML Factory</b></a> &nbsp;|&nbsp;
 <a href="https://github.com/jostrm/azure-enterprise-scale-ml/blob/main/documentation/v2/README.md"><b>Documentation</b></a><br>
 <sub>Shared capabilities and artwork come from PURPLE; your consumer repository starts here in BLUE.</sub>
 </p>
@@ -98,7 +98,7 @@ This initializes the empty registered catalog and PURPLE's CLI/helper bundle, no
 | GitHub **Use this template** | [Include all branches, then select v1.26](documentation/bootstrapping.md#b-github-use-this-template) |
 | Empty Azure DevOps / bring your own repository | [Copy-ready setup and pipeline configuration](documentation/bootstrapping.md#c-empty-azure-devops-or-bring-your-own-repository) |
 
-The v1.26 gitlink pins PURPLE commit `f60e3eb9f2b240417b4941f70ec6902731f5394e`. Recursive clones reproduce that commit; branch metadata is only for explicit future updates.
+The v1.26 gitlink pins PURPLE commit `a8b68eab54d00d7276ff4d8b659f940af8c37f94`. Recursive clones reproduce that commit; branch metadata is only for explicit future updates.
 
 See [configuration, compatibility and safe upgrades](documentation/bootstrapping.md). Optional services stay opt-in. Disabling a feature flag does **not** necessarily delete existing resources or stop ongoing costs; review the resource lifecycle, retained data and billing before making changes.
 
@@ -106,8 +106,8 @@ See [configuration, compatibility and safe upgrades](documentation/bootstrapping
 
 [Full setup & usage guide](https://github.com/jostrm/azure-enterprise-scale-ml/blob/release/v1.26/documentation/v2/20-29/24-end-2-end-setup.md) |
 [Full variable documentation](https://jostrm.github.io/azure-enterprise-scale-ml/) |
-[Agent Factory](https://github.com/jostrm/azure-enterprise-scale-ml/blob/f60e3eb9f2b240417b4941f70ec6902731f5394e/usecase_code/40-agent-factory/readme.md) |
-[ML Factory](https://github.com/jostrm/azure-enterprise-scale-ml/blob/f60e3eb9f2b240417b4941f70ec6902731f5394e/usecase_code/50-ml-model-factory/readme.md)
+[Agent Factory](https://github.com/jostrm/azure-enterprise-scale-ml/blob/a8b68eab54d00d7276ff4d8b659f940af8c37f94/usecase_code/40-agent-factory/readme.md) |
+[ML Factory](https://github.com/jostrm/azure-enterprise-scale-ml/blob/a8b68eab54d00d7276ff4d8b659f940af8c37f94/usecase_code/50-ml-model-factory/readme.md)
 
 BLUE implements repository bootstrap, not the shared services themselves. No Azure deployment is performed by repository setup.
 
