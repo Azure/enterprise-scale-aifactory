@@ -180,7 +180,7 @@ class EnvironmentTests(unittest.TestCase):
     def test_exact_pinned_scoped_workflow_authentication_is_classified(self):
         mapping = gb.load_mapping()
         upstream = ROOT / "azure-enterprise-scale-ml"
-        self.assertEqual(mapping["upstream_commit"], "a8b68eab54d00d7276ff4d8b659f940af8c37f94")
+        self.assertEqual(mapping["upstream_commit"], "a2ce55097eef625a30b2116fb78f0314e286793d")
         self.assertNotIn("optional_variables", mapping)
         for mode, contract in mapping["auth_modes"].items():
             path = upstream.joinpath(*contract["workflow"].split("/"))
