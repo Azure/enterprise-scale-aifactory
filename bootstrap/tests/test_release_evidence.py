@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 SHA = "a" * 40
 
 
@@ -22,7 +22,7 @@ class ReleaseEvidenceTests(unittest.TestCase):
         return {
             "id": 123,
             "head_sha": SHA,
-            "head_branch": "release/v1.25",
+            "head_branch": "release/v1.26",
             "event": "push",
             "status": "completed",
             "conclusion": "success",

@@ -5,8 +5,8 @@ import unittest
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[1]
-PIN = "89eca66185366a702b026cec8c938570548c649c"
+ROOT = Path(__file__).resolve().parents[2]
+PIN = "a8b68eab54d00d7276ff4d8b659f940af8c37f94"
 IMAGE_ROOT = (
     "https://raw.githubusercontent.com/jostrm/azure-enterprise-scale-ml/"
     "main/documentation/v2/10-19/images/"
@@ -29,7 +29,7 @@ class ReleaseContractTests(unittest.TestCase):
         link = (
             "[Full setup & usage guide]"
             "(https://github.com/jostrm/azure-enterprise-scale-ml/blob/"
-            "release/v1.25/documentation/v2/20-29/24-end-2-end-setup.md)"
+            "release/v1.26/documentation/v2/20-29/24-end-2-end-setup.md)"
         )
         for relative in ("README.md", "documentation/bootstrapping.md"):
             with self.subTest(page=relative):
@@ -48,7 +48,7 @@ class ReleaseContractTests(unittest.TestCase):
         self.assertIn("No legacy", notes)
         self.assertNotIn("supported legacy", docs)
         self.assertNotIn("supported layout is the upstream **legacy", docs)
-        self.assertNotIn("bash 04ab-setup-infra-aifactory.sh --repo", docs)
+        self.assertNotIn("bash aifactory.sh deploy --repo", docs)
         self.assertFalse((ROOT / "aifactory").exists())
         self.assertEqual(list((ROOT / ".github/workflows").glob("infra-*.yml")), [])
 
@@ -93,7 +93,7 @@ class ReleaseContractTests(unittest.TestCase):
             consumer[:1200],
         )
         self.assertIn("ongoing costs", consumer)
-        self.assertIn("## Quickstart - v1.25", consumer)
+        self.assertIn("## Quickstart - v1.26", consumer)
         self.assertIn("compatibility matrix", opening)
         self.assertNotIn("## Quickstart", opening)
         images = re.findall(r'!\[[^\]]*\]\(([^)]+)\)|<img\s+[^>]*src="([^"]+)"', opening)
@@ -147,7 +147,7 @@ class ReleaseContractTests(unittest.TestCase):
             "Compatibility matrix",
             "AZURE_CREDENTIALS",
             "OIDC",
-            "release_125",
+            "release_126",
             "--latest=false",
             "headSha",
         ):
@@ -166,16 +166,18 @@ class ReleaseContractTests(unittest.TestCase):
             "Include all branches",
             "Create repository from template",
             "is_template=true",
-            "2026-11-18",
+            "2026-11-25",
             "Default-only",
             "current `main`",
+            "only when" + " its `.gitmodules` branch says `release/v1.26`",
             "--include-all-branches",
-            "--default-branch release/v1.25",
+            "--default-branch release/v1.26",
             "160000",
             PIN,
-            "--repair-submodule --dry-run",
+            "aifactory.sh init --repair-submodule --dry-run",
+            "aifactory.sh init --provider gha --dry-run",
             ".github/workflows/factory-lifecycle.yml",
-            "02b-GH-create-or-update-github-variables.sh",
+            "aifactory.sh sync --dry-run",
             "GITHUB_DESTINATION_REPO",
             "workflow_dispatch",
             "not tested",
@@ -185,12 +187,17 @@ class ReleaseContractTests(unittest.TestCase):
         self.assertNotIn("default remains older", section)
         self.assertNotIn("Default-only generation does not give", section)
         self.assertNotIn("setting was `false`", section)
+        for retired in ("01a-", "01b-", "02b-", "03b-"):
+            with self.subTest(retired=retired):
+                self.assertNotIn(retired, section)
+        self.assertNotIn("unchanged `main`", text)
+        self.assertNotIn("release/v1.26` and `release/v1.26", text)
 
     def test_template_guide_compares_native_generation_with_actual_mirror_script(self):
         text = (ROOT / "documentation/bootstrapping.md").read_text(encoding="utf-8")
         comparison = text.split("### Template versus programmatic mirror: pros and cons\n", 1)[1]
         for required in (
-            "01a-GH-mirror-repo-from-template-once.sh",
+            "aifactory.sh mirror",
             "single commit",
             "unrelated histories",
             "tags",
@@ -199,11 +206,11 @@ class ReleaseContractTests(unittest.TestCase):
             "OIDC",
             "Git LFS",
             "not automatically",
-            "Never run the mirror script against a template-created",
+            "Never run the mirror command against a template-created",
             "bootstrap/github_bootstrap.py",
             "bootstrap/consumer.py",
-            "tests/test_mirror_git.py",
-            "tests/test_consumer_git.py",
+            "bootstrap/tests/test_mirror_git.py",
+            "bootstrap/tests/test_consumer_git.py",
             "https://docs.github.com/en/repositories/creating-and-managing-repositories/duplicating-a-repository",
             "https://cli.github.com/manual/gh_repo_create",
         ):
@@ -223,7 +230,7 @@ class ReleaseContractTests(unittest.TestCase):
         for required in (
             "push:",
             "pull_request:",
-            "release/v1.25",
+            "release/v1.26",
             "workflow_dispatch:",
             "ubuntu-latest",
             "windows-latest",
@@ -247,6 +254,23 @@ class ReleaseContractTests(unittest.TestCase):
         self.assertIn("available through the submodule", text)
         self.assertIn("No Azure deployment", text)
 
+
+    def test_release_publication_tags_pushes_and_releases_one_name(self):
+        docs = (ROOT / "documentation/bootstrapping.md").read_text(encoding="utf-8")
+        section = docs[docs.index("## Validation and release publication"):]
+        names = set(re.findall(r"git tag -a (release_\d+)|refs/tags/(release_\d+)|gh release create (release_\d+)", section))
+        flat = {n for group in names for n in group if n}
+        self.assertEqual(flat, {"release_126"}, "tag, push and release must use release_126")
+
+
+    def test_template_guide_does_not_pin_what_main_holds(self):
+        # main moves between releases (v1.25 -> v1.26 on 2026-11-25): the guide tells the reader how to check it.
+        docs = (ROOT / "documentation/bootstrapping.md").read_text(encoding="utf-8")
+        section = docs[docs.index("## B. GitHub Use this template"):docs.index("## C. ")]
+        self.assertNotIn("89eca66185366a702b026cec8c938570548c649c", section)
+        self.assertNotIn("currently contains the v1.25 consumer", section)
+        self.assertNotIn("The current `main` holds", section)
+        self.assertIn("check the `.gitmodules` branch", section)
 
 if __name__ == "__main__":
     unittest.main()
