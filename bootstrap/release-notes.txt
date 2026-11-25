@@ -4,7 +4,7 @@ BLUE bootstraps the repository you own; PURPLE supplies the versioned shared
 implementation through the azure-enterprise-scale-ml submodule.
 
 PURPLE release/v1.26 is pinned to:
-a8b68eab54d00d7276ff4d8b659f940af8c37f94
+a2ce55097eef625a30b2116fb78f0314e286793d
 
 Ordinary recursive clones reproduce the committed gitlink, not a moving upstream
 HEAD. Branch metadata is release/v1.26; upgrades remain explicit reviewed commits.
@@ -24,6 +24,8 @@ HEAD. Branch metadata is release/v1.26; upgrades remain explicit reviewed commit
   GitHub Actions infra-common-terraform.yml with tfstate* settings), adoption of existing factory
   resources, private DNS zone groups that wait for their endpoints, peering id normalisation and
   deletion fixes (404 reads are absent; VM-created managed disks are owned through their VM).
+- PURPLE a2ce5509 adds quickstart 01 Option C: start the Factory API from the command line
+  (aifactory-config.exe --api-host --port 8765, config wizard v0.47.107 or later).
 
 ## Registered layout only
 

@@ -8,7 +8,7 @@ configuration layout. Both configuration folders are not required.
 [Full variable documentation](https://jostrm.github.io/azure-enterprise-scale-ml/)
 
 PURPLE supplies the versioned implementation. BLUE selects
-`release/v1.26` at **`a8b68eab54d00d7276ff4d8b659f940af8c37f94`**. The full guide
+`release/v1.26` at **`a2ce55097eef625a30b2116fb78f0314e286793d`**. The full guide
 tracks the upstream release branch; implementation references and compatibility
 evidence below remain pinned to that exact commit. Reading the guide does not
 update the submodule or select a later source revision.
@@ -189,7 +189,7 @@ git config --file .gitmodules --get submodule.azure-enterprise-scale-ml.url
 ```
 
 The selected source records mode `160000` (a Git submodule reference), commit
-`a8b68eab54d00d7276ff4d8b659f940af8c37f94`, branch `release/v1.26`, and URL
+`a2ce55097eef625a30b2116fb78f0314e286793d`, branch `release/v1.26`, and URL
 `https://github.com/jostrm/azure-enterprise-scale-ml`. The submodule is a reference
 to the common functionality, not a vendored copy of that entire repository.
 If registration is missing, use the repair subsection before initialization.
@@ -330,7 +330,7 @@ initializes local registered configuration and helpers only:
 
 ```bash
 BLUE_SOURCE="/absolute/path/to/blue-v126"
-PURPLE_SHA=a8b68eab54d00d7276ff4d8b659f940af8c37f94
+PURPLE_SHA=a2ce55097eef625a30b2116fb78f0314e286793d
 git clone https://dev.azure.com/YOUR-ORG/YOUR-PROJECT/_git/YOUR-REPO my-aifactory
 cd my-aifactory
 git switch -c release/v1.26
@@ -520,7 +520,7 @@ The selected source also documents a blocked **integrated access-hub** combinati
 (`access_hub_mode=integrated`, `setup_hub_access=true`). Configuration can be saved
 without making deployment executable. Do not silently substitute an external/no-hub
 topology or bypass source guards. Read the
-[pinned limitation](https://github.com/jostrm/azure-enterprise-scale-ml/blob/a8b68eab54d00d7276ff4d8b659f940af8c37f94/documentation/v2/20-29/24-end-2-end-setup.md#current-integrated-hub-limitation).
+[pinned limitation](https://github.com/jostrm/azure-enterprise-scale-ml/blob/a2ce55097eef625a30b2116fb78f0314e286793d/documentation/v2/20-29/24-end-2-end-setup.md#current-integrated-hub-limitation).
 
 ## Upgrades and existing legacy consumers
 
