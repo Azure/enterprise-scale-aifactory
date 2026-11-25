@@ -136,10 +136,9 @@ It is a starting point for the same registered consumer setup as the mirror
 route, not a full Git mirror or an Azure deployment.
 
 **Repository state checked on 2026-11-25:** template mode is enabled
-(`is_template=true`) and the default branch is `main`. The current `main` holds
-the v1.25 consumer (numbered bootstrap scripts, `.gitmodules` branch
-`release/v1.25`, common functionality commit
-`89eca66185366a702b026cec8c938570548c649c`), not this v1.26 `aifactory.sh` layout.
+(`is_template=true`) and the default branch is `main`. `main` follows a release
+and can change between releases: before you rely on it, check the `.gitmodules` branch
+and the submodule commit it pins.
 The steps below deliberately select `release/v1.26`; they do not certify every
 other branch that GitHub may copy.
 
@@ -151,8 +150,8 @@ other branch that GitHub may copy.
 6. In **your new repository**, select `release/v1.26`. Set it as the default branch under **Settings > General > Default branch**, or use the CLI command below. This requires destination administration permission and does not change this source repo's default branch.
 
 **Default-only is an option, but is different:** omitting **Include all branches**
-copies the current `main` snapshot, which currently contains the v1.25 consumer
-with its numbered bootstrap scripts and older pin, not this v1.26 `aifactory.sh` layout.
+copies only the current `main` snapshot, which is this v1.26 `aifactory.sh` layout
+only when its `.gitmodules` branch says `release/v1.26`.
 It does not create the named `release/v1.26` branch used by the recipe below.
 Use the all-branches route for this release-based walkthrough. Copying all
 branches also includes historical and other release branches; their presence

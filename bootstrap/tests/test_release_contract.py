@@ -169,7 +169,7 @@ class ReleaseContractTests(unittest.TestCase):
             "2026-11-25",
             "Default-only",
             "current `main`",
-            "not this v1.26 `aifactory.sh` layout",
+            "only when" + " its `.gitmodules` branch says `release/v1.26`",
             "--include-all-branches",
             "--default-branch release/v1.26",
             "160000",
@@ -261,6 +261,16 @@ class ReleaseContractTests(unittest.TestCase):
         names = set(re.findall(r"git tag -a (release_\d+)|refs/tags/(release_\d+)|gh release create (release_\d+)", section))
         flat = {n for group in names for n in group if n}
         self.assertEqual(flat, {"release_126"}, "tag, push and release must use release_126")
+
+
+    def test_template_guide_does_not_pin_what_main_holds(self):
+        # main moves between releases (v1.25 -> v1.26 on 2026-11-25): the guide tells the reader how to check it.
+        docs = (ROOT / "documentation/bootstrapping.md").read_text(encoding="utf-8")
+        section = docs[docs.index("## B. GitHub Use this template"):docs.index("## C. ")]
+        self.assertNotIn("89eca66185366a702b026cec8c938570548c649c", section)
+        self.assertNotIn("currently contains the v1.25 consumer", section)
+        self.assertNotIn("The current `main` holds", section)
+        self.assertIn("check the `.gitmodules` branch", section)
 
 if __name__ == "__main__":
     unittest.main()
