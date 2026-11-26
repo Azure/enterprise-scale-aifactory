@@ -8,26 +8,14 @@ import tempfile
 import unittest
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 class ShellCheckoutTests(unittest.TestCase):
-    script_names = (
-        "01a-GH-mirror-repo-from-template-once.sh",
-        "01b-BYORepo-init-template-files-once.sh",
-        "02b-GH-create-or-update-github-variables.sh",
-        "03b-GH-add-aifactory-pipelines-once.sh",
-        "04ab-setup-infra-aifactory.sh",
-    )
+    script_names = ("aifactory.sh",)
 
     def test_only_blue_wrappers_are_executed_not_generated_upstream_launchers(self):
-        self.assertEqual(set(self.script_names), {
-            "01a-GH-mirror-repo-from-template-once.sh",
-            "01b-BYORepo-init-template-files-once.sh",
-            "02b-GH-create-or-update-github-variables.sh",
-            "03b-GH-add-aifactory-pipelines-once.sh",
-            "04ab-setup-infra-aifactory.sh",
-        })
+        self.assertEqual(set(self.script_names), {"aifactory.sh"})
 
     def test_job_scoped_longpaths_reaches_recursive_submodule_checkout(self):
         with tempfile.TemporaryDirectory(prefix=".bootstrap-test-longpath-", dir=ROOT) as directory:
