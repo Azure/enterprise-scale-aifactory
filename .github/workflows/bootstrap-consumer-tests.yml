@@ -2,28 +2,26 @@ name: Bootstrap consumer tests
 
 on:
   push:
-    branches: [release/v1.25]
+    branches: [release/v1.25, release/v1.26]
     paths:
       - '*.sh'
       - '.env.template'
       - '.git*'
       - '.github/**'
       - 'bootstrap/**'
-      - 'tests/**'
       - 'environment_setup/**'
       - 'azurefactory/**'
       - 'azure-enterprise-scale-ml'
       - 'README.md'
       - 'documentation/**'
   pull_request:
-    branches: [release/v1.25]
+    branches: [release/v1.25, release/v1.26]
     paths:
       - '*.sh'
       - '.env.template'
       - '.git*'
       - '.github/**'
       - 'bootstrap/**'
-      - 'tests/**'
       - 'environment_setup/**'
       - 'azurefactory/**'
       - 'azure-enterprise-scale-ml'
@@ -65,12 +63,13 @@ jobs:
       - name: Mocked unit and source-contract tests
         run: |
           set -euo pipefail
-          python -m unittest discover -s tests -p test_github_bootstrap.py -v
-          python -m unittest discover -s tests -p test_consumer.py -v
-          python -m unittest discover -s tests -p test_release_contract.py -v
-          python -m unittest discover -s tests -p test_release_evidence.py -v
+          python -m unittest discover -s bootstrap/tests -p test_github_bootstrap.py -v
+          python -m unittest discover -s bootstrap/tests -p test_consumer.py -v
+          python -m unittest discover -s bootstrap/tests -p test_release_contract.py -v
+          python -m unittest discover -s bootstrap/tests -p test_release_evidence.py -v
+          python -m unittest discover -s bootstrap/tests -p test_root_layout.py -v
       - name: Disposable local Git integration tests
-        run: python -m unittest discover -s tests -p 'test_*git.py' -v
+        run: python -m unittest discover -s bootstrap/tests -p 'test_*git.py' -v
       - name: Record exact tested revision
         env:
           TESTED_SHA: ${{ github.sha }}

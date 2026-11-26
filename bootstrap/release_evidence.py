@@ -9,7 +9,7 @@ from urllib.parse import urlencode
 
 
 WORKFLOW = "bootstrap-consumer-tests.yml"
-BRANCH = "release/v1.25"
+BRANCH = "release/v1.26"
 REQUIRED_JOBS = {"Bootstrap (ubuntu-latest)", "Bootstrap (windows-latest)"}
 
 

@@ -12,7 +12,7 @@ import unittest
 from unittest import mock
 from uuid import uuid4
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from bootstrap import consumer
 
@@ -74,7 +74,7 @@ class ConsumerTests(unittest.TestCase):
             ownership_evidence={"note": "customer-selected-version"})
         protected = {
             ".env": b"GITHUB_TOKEN=do-not-print\r\n",
-            "02b-GH-create-or-update-github-variables.sh": b"local sync\n",
+            "aifactory.sh": b"local sync\n",
             "azurefactory/register.json": (json.dumps(document) + "\r\n").encode(),
             "azurefactory/customer-config.json": b'{"version":"do-not-change"}\r\n',
         }
@@ -321,13 +321,12 @@ class ConsumerTests(unittest.TestCase):
         self.assertEqual(before, self.snapshot())
 
     def test_shell_entrypoints_probe_python_runtime_and_do_not_copy_legacy_files(self):
-        for name, operation in (("01b-BYORepo-init-template-files-once.sh", "init"),
-                                ("03b-GH-add-aifactory-pipelines-once.sh", "refresh")):
-            text = (ROOT / name).read_text(encoding="utf-8")
-            self.assertIn("python3 -c 'import sys; sys.exit(sys.version_info < (3, 9))'", text)
-            self.assertIn("python -c 'import sys; sys.exit(sys.version_info < (3, 9))'", text)
-            self.assertIn(f'consumer.py" {operation} "$@"', text)
-            self.assertNotIn("cp ", text)
+        text = (ROOT / "aifactory.sh").read_text(encoding="utf-8")
+        self.assertIn("python3 -c 'import sys; sys.exit(sys.version_info < (3, 9))'", text)
+        self.assertIn("python -c 'import sys; sys.exit(sys.version_info < (3, 9))'", text)
+        self.assertIn('init|refresh|deploy) target=(bootstrap/consumer.py "$command_name")', text)
+        self.assertIn('exec "${python_command[@]}" -B "$SCRIPT_DIR/${target[0]}" "${target[@]:1}" "$@"', text)
+        self.assertNotIn("cp ", text)
 
     def test_checked_in_starter_is_registered_only(self):
         self.assertEqual(json.loads((ROOT / "azurefactory/register.json").read_text()), EMPTY)
